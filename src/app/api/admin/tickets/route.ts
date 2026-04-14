@@ -3,6 +3,16 @@ import { prisma } from "@/lib/prisma";
 import { requireAdmin } from "@/lib/api-auth";
 import { sanitizeInput } from "@/lib/sanitize";
 import { createNotification } from "@/lib/notifications";
+import { uploadFile } from "@/lib/s3";
+
+const ALLOWED_MIME = [
+  "application/pdf",
+  "image/jpeg",
+  "image/jpg",
+  "image/png",
+  "image/webp",
+];
+const MAX_BYTES = 25 * 1024 * 1024;
 
 export async function GET(request: Request) {
   const auth = await requireAdmin(request);
@@ -43,7 +53,11 @@ export async function GET(request: Request) {
             senderId: m.senderId,
             message: m.message,
             isInternal: m.isInternal,
-            isAdmin: m.senderId === auth.user.userId,
+            isAdmin: m.senderId !== ticket.customerId,
+            attachmentUrl: m.attachmentUrl,
+            attachmentName: m.attachmentName,
+            attachmentType: m.attachmentType,
+            attachmentSize: m.attachmentSize,
             createdAt: m.createdAt.toISOString(),
           })),
         },
@@ -98,8 +112,30 @@ export async function PATCH(request: Request) {
   if ("error" in auth) return auth.error;
 
   try {
-    const body = await request.json();
-    const { ticketId, status, reply } = body;
+    let ticketId = "";
+    let status = "";
+    let reply = "";
+    let priority = "";
+    let file: File | null = null;
+
+    const contentType = request.headers.get("content-type") || "";
+    if (contentType.includes("multipart/form-data")) {
+      const form = await request.formData();
+      ticketId = (form.get("ticketId") as string) || "";
+      status = (form.get("status") as string) || "";
+      reply = (form.get("reply") as string) || "";
+      priority = (form.get("priority") as string) || "";
+      const f = form.get("file");
+      if (f && typeof f !== "string") file = f as File;
+    } else {
+      const body = await request.json();
+      ticketId = body.ticketId || "";
+      status = body.status || "";
+      reply = body.reply || "";
+      priority = body.priority || "";
+    }
+
+    const VALID_PRIORITIES = new Set(["LOW", "MEDIUM", "HIGH", "URGENT"]);
 
     if (!ticketId) {
       return NextResponse.json({ error: "ticketId required" }, { status: 400 });
@@ -110,7 +146,6 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Ticket not found" }, { status: 404 });
     }
 
-    // Update status if provided
     if (status) {
       await prisma.ticket.update({
         where: { id: ticketId },
@@ -122,18 +157,55 @@ export async function PATCH(request: Request) {
       });
     }
 
-    // Add reply if provided
-    if (reply) {
-      const sanitizedReply = sanitizeInput(reply);
+    if (priority && VALID_PRIORITIES.has(priority)) {
+      await prisma.ticket.update({
+        where: { id: ticketId },
+        data: { priority },
+      });
+    }
+
+    if (reply || file) {
+      let attachmentUrl: string | null = null;
+      let attachmentName: string | null = null;
+      let attachmentType: string | null = null;
+      let attachmentSize: number | null = null;
+
+      if (file) {
+        if (!ALLOWED_MIME.includes(file.type)) {
+          return NextResponse.json(
+            { error: "Only PDF and image files (jpg, png, webp) are allowed" },
+            { status: 400 }
+          );
+        }
+        if (file.size > MAX_BYTES) {
+          return NextResponse.json(
+            { error: "File too large (max 25MB)" },
+            { status: 400 }
+          );
+        }
+        const buffer = Buffer.from(await file.arrayBuffer());
+        const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const key = `tickets/${ticketId}/${Date.now()}-${safeName}`;
+        attachmentUrl = await uploadFile(key, buffer, file.type);
+        attachmentName = file.name;
+        attachmentType = file.type;
+        attachmentSize = file.size;
+      }
+
+      const sanitizedReply = reply ? sanitizeInput(reply) : "";
+
       await prisma.ticketMessage.create({
         data: {
           ticketId,
           senderId: auth.user.userId,
           message: sanitizedReply,
+          attachmentUrl,
+          attachmentName,
+          attachmentType,
+          attachmentSize,
         },
       });
 
-      // Auto-set to IN_PROGRESS if still OPEN
       if (ticket.status === "OPEN") {
         await prisma.ticket.update({
           where: { id: ticketId },
@@ -142,15 +214,23 @@ export async function PATCH(request: Request) {
       }
     }
 
-    // Send ticket update notification
-    await createNotification({
-      customerId: ticket.customerId,
-      type: "TICKET_UPDATE",
-      title: "Ticket Updated",
-      body: reply
+    const notifyBody =
+      reply || file
         ? `Your ticket #${ticket.ticketRef} has a new reply from support.`
-        : `Your ticket #${ticket.ticketRef} status changed to ${status}.`,
-    });
+        : status
+        ? `Your ticket #${ticket.ticketRef} status changed to ${status}.`
+        : priority
+        ? `Your ticket #${ticket.ticketRef} priority changed to ${priority}.`
+        : null;
+
+    if (notifyBody) {
+      await createNotification({
+        customerId: ticket.customerId,
+        type: "TICKET_UPDATE",
+        title: "Ticket Updated",
+        body: notifyBody,
+      });
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {

@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Send, User, Headphones } from "lucide-react";
+import { ArrowLeft, Send, User, Headphones, Paperclip, FileText, X } from "lucide-react";
 
 interface TicketDetail {
   id: string;
@@ -27,6 +27,10 @@ interface TicketMessage {
   id: string;
   senderId: string;
   message: string;
+  attachmentUrl: string | null;
+  attachmentName: string | null;
+  attachmentType: string | null;
+  attachmentSize: number | null;
   createdAt: string;
   isCustomer: boolean;
 }
@@ -44,6 +48,60 @@ const priorityConfig: Record<string, { label: string; variant: "default" | "seco
   HIGH: { label: "High", variant: "default" },
   URGENT: { label: "Urgent", variant: "destructive" },
 };
+
+function MessageAttachment({
+  url,
+  name,
+  type,
+  size,
+  invert,
+}: {
+  url: string;
+  name: string;
+  type: string | null;
+  size: number | null;
+  invert: boolean;
+}) {
+  const isImage = (type || "").startsWith("image/");
+  const sizeKb = size ? `${(size / 1024).toFixed(0)} KB` : "";
+  if (isImage) {
+    return (
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="mt-2 block"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={url}
+          alt={name}
+          className="max-h-64 rounded-md border border-white/10"
+        />
+      </a>
+    );
+  }
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`mt-2 flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${
+        invert
+          ? "border-white/20 bg-white/10 text-white hover:bg-white/20"
+          : "border-gray-200 bg-white text-gray-900 hover:bg-gray-50"
+      }`}
+    >
+      <FileText className="h-4 w-4" />
+      <span className="flex-1 truncate">{name}</span>
+      {sizeKb && (
+        <span className={invert ? "text-gray-300 text-xs" : "text-gray-500 text-xs"}>
+          {sizeKb}
+        </span>
+      )}
+    </a>
+  );
+}
 
 const categoryLabels: Record<string, string> = {
   PAYMENT_DISPUTE: "Payment Dispute",
@@ -66,6 +124,8 @@ export default function TicketDetailPage({
   const [loading, setLoading] = useState(true);
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [replyError, setReplyError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!accessToken || !id) return;
@@ -89,16 +149,17 @@ export default function TicketDetailPage({
   }
 
   async function handleSendReply() {
-    if (!reply.trim() || !accessToken) return;
+    if ((!reply.trim() && !attachment) || !accessToken) return;
     setSending(true);
+    setReplyError(null);
     try {
+      const fd = new FormData();
+      fd.append("message", reply);
+      if (attachment) fd.append("file", attachment);
       const res = await fetch(`/api/tickets/${id}/messages`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ message: reply }),
+        headers: { Authorization: `Bearer ${accessToken}` },
+        body: fd,
       });
       if (res.ok) {
         const newMsg = await res.json();
@@ -106,9 +167,14 @@ export default function TicketDetailPage({
           prev ? { ...prev, messages: [...prev.messages, newMsg] } : prev
         );
         setReply("");
+        setAttachment(null);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setReplyError(data.error || "Failed to send reply");
       }
     } catch (err) {
       console.error("Failed to send reply:", err);
+      setReplyError("Failed to send reply");
     } finally {
       setSending(false);
     }
@@ -151,7 +217,6 @@ export default function TicketDetailPage({
   }
 
   const sc = statusConfig[ticket.status];
-  const pc = priorityConfig[ticket.priority];
   const isClosed = ticket.status === "CLOSED";
 
   return (
@@ -171,7 +236,7 @@ export default function TicketDetailPage({
       </div>
 
       {/* Ticket Info */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-gray-500">Status</CardTitle>
@@ -179,16 +244,6 @@ export default function TicketDetailPage({
           <CardContent>
             <Badge variant={sc?.variant || "secondary"}>
               {sc?.label || ticket.status}
-            </Badge>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-gray-500">Priority</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Badge variant={pc?.variant || "secondary"}>
-              {pc?.label || ticket.priority}
             </Badge>
           </CardContent>
         </Card>
@@ -236,7 +291,18 @@ export default function TicketDetailPage({
                       : "bg-gray-100 text-gray-900"
                   }`}
                 >
-                  <p className="text-sm whitespace-pre-wrap">{msg.message}</p>
+                  {msg.message && (
+                    <p className="text-sm whitespace-pre-wrap">{msg.message}</p>
+                  )}
+                  {msg.attachmentUrl && (
+                    <MessageAttachment
+                      url={msg.attachmentUrl}
+                      name={msg.attachmentName || "attachment"}
+                      type={msg.attachmentType}
+                      size={msg.attachmentSize}
+                      invert={msg.isCustomer}
+                    />
+                  )}
                   <p
                     className={`text-xs mt-1 ${
                       msg.isCustomer ? "text-gray-400" : "text-gray-500"
@@ -256,22 +322,58 @@ export default function TicketDetailPage({
 
           {/* Reply Form */}
           {!isClosed && (
-            <div className="mt-6 flex gap-3">
-              <Textarea
-                value={reply}
-                onChange={(e) => setReply(e.target.value)}
-                placeholder="Type your reply..."
-                rows={3}
-                className="flex-1"
-              />
-              <Button
-                onClick={handleSendReply}
-                disabled={sending || !reply.trim()}
-                className="self-end"
-              >
-                <Send className="h-4 w-4 mr-2" />
-                {sending ? "Sending..." : "Send"}
-              </Button>
+            <div className="mt-6 space-y-3">
+              <div className="flex gap-3">
+                <Textarea
+                  value={reply}
+                  onChange={(e) => setReply(e.target.value)}
+                  placeholder="Type your reply..."
+                  rows={3}
+                  className="flex-1"
+                />
+                <Button
+                  onClick={handleSendReply}
+                  disabled={sending || (!reply.trim() && !attachment)}
+                  className="self-end"
+                >
+                  <Send className="h-4 w-4 mr-2" />
+                  {sending ? "Sending..." : "Send"}
+                </Button>
+              </div>
+              {attachment ? (
+                <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                  <Paperclip className="h-4 w-4 text-gray-500" />
+                  <span className="flex-1 truncate">{attachment.name}</span>
+                  <span className="text-xs text-gray-500">
+                    {(attachment.size / 1024).toFixed(0)} KB
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setAttachment(null)}
+                    className="text-gray-500 hover:text-red-600"
+                    aria-label="Remove attachment"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ) : (
+                <label className="inline-flex items-center gap-2 rounded-md border border-dashed px-3 py-1.5 text-xs text-gray-600 cursor-pointer hover:border-gray-400">
+                  <Paperclip className="h-3.5 w-3.5" />
+                  <span>Attach PDF or image (max 25 MB)</span>
+                  <input
+                    type="file"
+                    accept="application/pdf,image/jpeg,image/jpg,image/png,image/webp"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] || null;
+                      setAttachment(f);
+                    }}
+                  />
+                </label>
+              )}
+              {replyError && (
+                <p className="text-sm text-red-600">{replyError}</p>
+              )}
             </div>
           )}
 

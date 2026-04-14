@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
+import { isTicketsOnly } from "@/lib/features";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,11 +44,12 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (user) {
-      router.replace(
-        user.role === "ADMIN" || user.role === "SUPER_ADMIN"
-          ? "/admin/dashboard"
-          : "/dashboard"
-      );
+      const isAdmin = user.role === "ADMIN" || user.role === "SUPER_ADMIN";
+      if (isTicketsOnly()) {
+        router.replace(isAdmin ? "/admin/tickets" : "/tickets");
+      } else {
+        router.replace(isAdmin ? "/admin/dashboard" : "/dashboard");
+      }
     }
   }, [user, router]);
 
@@ -176,25 +178,46 @@ export default function LoginPage() {
           {/* Hero text */}
           <div className="space-y-6 max-w-md">
             <h2 className="text-4xl font-bold text-primary-foreground leading-tight">
-              Your Property,
-              <br />
-              <span className="bg-gradient-to-r from-accent to-primary-foreground bg-clip-text text-transparent">
-                One Portal Away
-              </span>
+              {isTicketsOnly() ? (
+                <>
+                  Your Questions,
+                  <br />
+                  <span className="bg-gradient-to-r from-accent to-primary-foreground bg-clip-text text-transparent">
+                    Answered Fast
+                  </span>
+                </>
+              ) : (
+                <>
+                  Your Property,
+                  <br />
+                  <span className="bg-gradient-to-r from-accent to-primary-foreground bg-clip-text text-transparent">
+                    One Portal Away
+                  </span>
+                </>
+              )}
             </h2>
             <p className="text-primary-foreground/50 text-lg leading-relaxed">
-              Track payments, monitor construction progress, manage documents —
-              everything about your property in one place.
+              {isTicketsOnly()
+                ? "Raise a ticket for any query about your property and stay in direct conversation with the ONE Group team."
+                : "Track payments, monitor construction progress, manage documents — everything about your property in one place."}
             </p>
 
             {/* Features */}
             <div className="grid grid-cols-2 gap-4 pt-4">
-              {[
-                { icon: "💰", label: "Payment Tracking" },
-                { icon: "🏗️", label: "Construction Updates" },
-                { icon: "📄", label: "Document Vault" },
-                { icon: "🎯", label: "Referral Rewards" },
-              ].map((f) => (
+              {(isTicketsOnly()
+                ? [
+                    { icon: "💬", label: "Raise a Ticket" },
+                    { icon: "🔔", label: "Live Updates" },
+                    { icon: "📎", label: "Share Details" },
+                    { icon: "✅", label: "Track to Resolution" },
+                  ]
+                : [
+                    { icon: "💰", label: "Payment Tracking" },
+                    { icon: "🏗️", label: "Construction Updates" },
+                    { icon: "📄", label: "Document Vault" },
+                    { icon: "🎯", label: "Referral Rewards" },
+                  ]
+              ).map((f) => (
                 <div
                   key={f.label}
                   className="flex items-center gap-3 p-3 rounded-lg bg-primary-foreground/10 border border-primary-foreground/10"

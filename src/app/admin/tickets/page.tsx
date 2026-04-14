@@ -22,6 +22,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   MessageSquare,
   Clock,
   CheckCircle2,
@@ -31,6 +38,9 @@ import {
   Phone,
   User,
   XCircle,
+  Paperclip,
+  FileText,
+  X,
 } from "lucide-react";
 
 interface TicketRow {
@@ -62,6 +72,10 @@ interface TicketDetail {
     senderId: string;
     message: string;
     isAdmin: boolean;
+    attachmentUrl: string | null;
+    attachmentName: string | null;
+    attachmentType: string | null;
+    attachmentSize: number | null;
     createdAt: string;
   }>;
 }
@@ -97,6 +111,53 @@ const categoryLabels: Record<string, string> = {
   GENERAL: "General",
 };
 
+function AdminMessageAttachment({
+  url,
+  name,
+  type,
+  size,
+  invert,
+}: {
+  url: string;
+  name: string;
+  type: string | null;
+  size: number | null;
+  invert: boolean;
+}) {
+  const isImage = (type || "").startsWith("image/");
+  const sizeKb = size ? `${(size / 1024).toFixed(0)} KB` : "";
+  if (isImage) {
+    return (
+      <a href={url} target="_blank" rel="noopener noreferrer" className="mt-2 block">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={url}
+          alt={name}
+          className="max-h-64 rounded-md border border-white/10"
+        />
+      </a>
+    );
+  }
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={`mt-2 flex items-center gap-2 rounded-md border px-3 py-2 text-xs ${
+        invert
+          ? "border-white/20 bg-white/10 text-white hover:bg-white/20"
+          : "border-gray-200 bg-white text-gray-900 hover:bg-gray-50"
+      }`}
+    >
+      <FileText className="h-4 w-4" />
+      <span className="flex-1 truncate">{name}</span>
+      {sizeKb && (
+        <span className={invert ? "text-indigo-200" : "text-gray-500"}>{sizeKb}</span>
+      )}
+    </a>
+  );
+}
+
 export default function AdminTicketsPage() {
   const { accessToken } = useAuth();
   const [tickets, setTickets] = useState<TicketRow[]>([]);
@@ -106,6 +167,8 @@ export default function AdminTicketsPage() {
   const [selectedTicket, setSelectedTicket] = useState<TicketDetail | null>(null);
   const [reply, setReply] = useState("");
   const [sending, setSending] = useState(false);
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [replyError, setReplyError] = useState<string | null>(null);
 
   const fetchTickets = useCallback(async () => {
     if (!accessToken) return;
@@ -143,24 +206,32 @@ export default function AdminTicketsPage() {
   };
 
   const handleReply = async () => {
-    if (!accessToken || !selectedTicket || !reply.trim()) return;
+    if (!accessToken || !selectedTicket) return;
+    if (!reply.trim() && !attachment) return;
     setSending(true);
+    setReplyError(null);
     try {
+      const fd = new FormData();
+      fd.append("ticketId", selectedTicket.id);
+      fd.append("reply", reply.trim());
+      if (attachment) fd.append("file", attachment);
       const res = await fetch("/api/admin/tickets", {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ ticketId: selectedTicket.id, reply: reply.trim() }),
+        headers: { Authorization: `Bearer ${accessToken}` },
+        body: fd,
       });
       if (res.ok) {
         setReply("");
+        setAttachment(null);
         await openTicket(selectedTicket.id);
         await fetchTickets();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setReplyError(data.error || "Failed to send reply");
       }
     } catch (err) {
       console.error("Reply failed:", err);
+      setReplyError("Failed to send reply");
     } finally {
       setSending(false);
     }
@@ -183,6 +254,26 @@ export default function AdminTicketsPage() {
       await fetchTickets();
     } catch (err) {
       console.error("Status update failed:", err);
+    }
+  };
+
+  const updatePriority = async (ticketId: string, priority: string) => {
+    if (!accessToken) return;
+    try {
+      await fetch("/api/admin/tickets", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ ticketId, priority }),
+      });
+      if (selectedTicket?.id === ticketId) {
+        await openTicket(ticketId);
+      }
+      await fetchTickets();
+    } catch (err) {
+      console.error("Priority update failed:", err);
     }
   };
 
@@ -364,6 +455,29 @@ export default function AdminTicketsPage() {
                 )}
               </div>
 
+              {/* Priority */}
+              <div className="flex items-center gap-3">
+                <span className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Priority
+                </span>
+                <Select
+                  value={selectedTicket.priority}
+                  onValueChange={(val) =>
+                    val && updatePriority(selectedTicket.id, val)
+                  }
+                >
+                  <SelectTrigger className="h-8 w-36 text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="LOW">Low</SelectItem>
+                    <SelectItem value="MEDIUM">Medium</SelectItem>
+                    <SelectItem value="HIGH">High</SelectItem>
+                    <SelectItem value="URGENT">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
               {/* Messages */}
               <div className="flex-1 min-h-0 overflow-y-auto space-y-3 border rounded-lg p-4 bg-white">
                 {selectedTicket.messages.map((m) => (
@@ -373,7 +487,16 @@ export default function AdminTicketsPage() {
                         ? "bg-indigo-600 text-white rounded-br-md"
                         : "bg-gray-100 text-gray-900 rounded-bl-md"
                     }`}>
-                      <p className="text-sm">{m.message}</p>
+                      {m.message && <p className="text-sm">{m.message}</p>}
+                      {m.attachmentUrl && (
+                        <AdminMessageAttachment
+                          url={m.attachmentUrl}
+                          name={m.attachmentName || "attachment"}
+                          type={m.attachmentType}
+                          size={m.attachmentSize}
+                          invert={m.isAdmin}
+                        />
+                      )}
                       <p className={`text-[10px] mt-1 ${m.isAdmin ? "text-indigo-200" : "text-gray-400"}`}>
                         {formatDate(m.createdAt)} {formatTime(m.createdAt)}
                       </p>
@@ -384,23 +507,63 @@ export default function AdminTicketsPage() {
 
               {/* Reply box */}
               {selectedTicket.status !== "CLOSED" && (
-                <div className="flex gap-2">
-                  <Textarea
-                    value={reply}
-                    onChange={(e) => setReply(e.target.value)}
-                    placeholder="Type your reply..."
-                    rows={2}
-                    className="flex-1 resize-none"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleReply();
-                      }
-                    }}
-                  />
-                  <Button onClick={handleReply} disabled={!reply.trim() || sending} className="bg-indigo-600 hover:bg-indigo-700 self-end">
-                    <Send className="h-4 w-4" />
-                  </Button>
+                <div className="space-y-2">
+                  <div className="flex gap-2">
+                    <Textarea
+                      value={reply}
+                      onChange={(e) => setReply(e.target.value)}
+                      placeholder="Type your reply..."
+                      rows={2}
+                      className="flex-1 resize-none"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleReply();
+                        }
+                      }}
+                    />
+                    <Button
+                      onClick={handleReply}
+                      disabled={(!reply.trim() && !attachment) || sending}
+                      className="bg-indigo-600 hover:bg-indigo-700 self-end"
+                    >
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  {attachment ? (
+                    <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                      <Paperclip className="h-4 w-4 text-gray-500" />
+                      <span className="flex-1 truncate">{attachment.name}</span>
+                      <span className="text-xs text-gray-500">
+                        {(attachment.size / 1024).toFixed(0)} KB
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setAttachment(null)}
+                        className="text-gray-500 hover:text-red-600"
+                        aria-label="Remove attachment"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="inline-flex items-center gap-2 rounded-md border border-dashed px-3 py-1.5 text-xs text-gray-600 cursor-pointer hover:border-gray-400">
+                      <Paperclip className="h-3.5 w-3.5" />
+                      <span>Attach PDF or image (max 25 MB)</span>
+                      <input
+                        type="file"
+                        accept="application/pdf,image/jpeg,image/jpg,image/png,image/webp"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0] || null;
+                          setAttachment(f);
+                        }}
+                      />
+                    </label>
+                  )}
+                  {replyError && (
+                    <p className="text-xs text-red-600">{replyError}</p>
+                  )}
                 </div>
               )}
             </div>

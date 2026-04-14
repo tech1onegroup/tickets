@@ -282,13 +282,17 @@ model Ticket {
 }
 
 model TicketMessage {
-  id         String   @id @default(cuid())
-  ticketId   String
-  ticket     Ticket   @relation(fields: [ticketId], references: [id])
-  senderId   String
-  message    String
-  isInternal Boolean  @default(false)
-  createdAt  DateTime @default(now())
+  id             String   @id @default(cuid())
+  ticketId       String
+  ticket         Ticket   @relation(fields: [ticketId], references: [id])
+  senderId       String
+  message        String
+  isInternal     Boolean  @default(false)
+  attachmentUrl  String?
+  attachmentName String?
+  attachmentType String?
+  attachmentSize Int?
+  createdAt      DateTime @default(now())
 }
 
 // ─── NOTIFICATIONS ──────────────────────────────────

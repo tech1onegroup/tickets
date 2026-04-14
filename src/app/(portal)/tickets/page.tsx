@@ -31,7 +31,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, MessageSquare, Clock } from "lucide-react";
+import { Plus, MessageSquare, Clock, Paperclip, X } from "lucide-react";
 
 interface Ticket {
   id: string;
@@ -82,7 +82,9 @@ export default function TicketsPage() {
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const [form, setForm] = useState({ category: "", subject: "", description: "" });
+  const [form, setForm] = useState({ category: "", subject: "", description: "", priority: "" });
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -107,24 +109,33 @@ export default function TicketsPage() {
   }
 
   async function handleCreate() {
-    if (!form.category || !form.subject || !form.description) return;
+    if (!form.category && !form.subject.trim() && !form.description.trim() && !attachment) return;
     setCreating(true);
+    setFormError(null);
     try {
+      const fd = new FormData();
+      fd.append("category", form.category);
+      fd.append("subject", form.subject);
+      fd.append("description", form.description);
+      if (form.priority) fd.append("priority", form.priority);
+      if (attachment) fd.append("file", attachment);
       const res = await fetch("/api/tickets", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify(form),
+        headers: { Authorization: `Bearer ${accessToken}` },
+        body: fd,
       });
       if (res.ok) {
-        setForm({ category: "", subject: "", description: "" });
+        setForm({ category: "", subject: "", description: "", priority: "" });
+        setAttachment(null);
         setDialogOpen(false);
         fetchTickets();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setFormError(data.error || "Failed to create ticket");
       }
     } catch (err) {
       console.error("Failed to create ticket:", err);
+      setFormError("Failed to create ticket");
     } finally {
       setCreating(false);
     }
@@ -164,6 +175,9 @@ export default function TicketsPage() {
               <DialogTitle>Create Support Ticket</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 mt-4">
+              <p className="text-xs text-gray-500">
+                All fields are optional — fill in whatever helps us understand your issue.
+              </p>
               <div className="space-y-2">
                 <Label>Category</Label>
                 <Select
@@ -205,10 +219,54 @@ export default function TicketsPage() {
                   rows={4}
                 />
               </div>
+              <div className="space-y-2">
+                <Label>Attachment</Label>
+                <p className="text-xs text-gray-500">
+                  PDF or image (JPG, PNG, WEBP), up to 25 MB
+                </p>
+                {attachment ? (
+                  <div className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+                    <Paperclip className="h-4 w-4 text-gray-500" />
+                    <span className="flex-1 truncate">{attachment.name}</span>
+                    <span className="text-xs text-gray-500">
+                      {(attachment.size / 1024).toFixed(0)} KB
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setAttachment(null)}
+                      className="text-gray-500 hover:text-red-600"
+                      aria-label="Remove attachment"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex items-center gap-2 rounded-md border border-dashed px-3 py-2 text-sm text-gray-600 cursor-pointer hover:border-gray-400">
+                    <Paperclip className="h-4 w-4" />
+                    <span>Attach a PDF or image</span>
+                    <input
+                      type="file"
+                      accept="application/pdf,image/jpeg,image/jpg,image/png,image/webp"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0] || null;
+                        setAttachment(f);
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+              {formError && (
+                <p className="text-sm text-red-600">{formError}</p>
+              )}
               <Button
                 onClick={handleCreate}
                 disabled={
-                  creating || !form.category || !form.subject || !form.description
+                  creating ||
+                  (!form.category &&
+                    !form.subject.trim() &&
+                    !form.description.trim() &&
+                    !attachment)
                 }
                 className="w-full"
               >
@@ -242,14 +300,12 @@ export default function TicketsPage() {
                   <TableHead>Subject</TableHead>
                   <TableHead>Category</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Priority</TableHead>
                   <TableHead>Date</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {tickets.map((ticket) => {
                   const sc = statusConfig[ticket.status];
-                  const pc = priorityConfig[ticket.priority];
                   return (
                     <TableRow
                       key={ticket.id}
@@ -268,11 +324,6 @@ export default function TicketsPage() {
                       <TableCell>
                         <Badge variant={sc?.variant || "secondary"}>
                           {sc?.label || ticket.status}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={pc?.variant || "secondary"}>
-                          {pc?.label || ticket.priority}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-gray-500">
