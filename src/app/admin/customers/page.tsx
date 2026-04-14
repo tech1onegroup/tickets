@@ -35,6 +35,9 @@ import {
   MessageSquare,
 } from "lucide-react";
 import { SendMessageDialog } from "@/components/admin/send-message-dialog";
+import { isTicketsOnly } from "@/lib/features";
+
+const HIDE_BOOKINGS = isTicketsOnly();
 
 interface CustomerRow {
   id: string;
@@ -206,7 +209,7 @@ export default function CustomersPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Phone</TableHead>
                 <TableHead>Email</TableHead>
-                <TableHead>Bookings</TableHead>
+                {!HIDE_BOOKINGS && <TableHead>Bookings</TableHead>}
                 <TableHead>Joined</TableHead>
                 <TableHead className="text-right">Details</TableHead>
               </TableRow>
@@ -219,9 +222,11 @@ export default function CustomersPage() {
                   <TableCell className="text-gray-500">
                     {customer.email || "-"}
                   </TableCell>
-                  <TableCell>
-                    <Badge variant="secondary">{customer.bookingsCount}</Badge>
-                  </TableCell>
+                  {!HIDE_BOOKINGS && (
+                    <TableCell>
+                      <Badge variant="secondary">{customer.bookingsCount}</Badge>
+                    </TableCell>
+                  )}
                   <TableCell className="text-gray-500">
                     {new Date(customer.createdAt).toLocaleDateString("en-IN")}
                   </TableCell>
@@ -240,7 +245,7 @@ export default function CustomersPage() {
               ))}
               {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center text-gray-500 py-8">
+                  <TableCell colSpan={HIDE_BOOKINGS ? 5 : 6} className="text-center text-gray-500 py-8">
                     No customers found
                   </TableCell>
                 </TableRow>
@@ -263,7 +268,9 @@ export default function CustomersPage() {
           <SheetHeader>
             <SheetTitle>Customer Details</SheetTitle>
             <SheetDescription>
-              Full profile, bookings, and payment history
+              {HIDE_BOOKINGS
+                ? "Contact details and profile"
+                : "Full profile, bookings, and payment history"}
             </SheetDescription>
           </SheetHeader>
 
@@ -337,9 +344,10 @@ export default function CustomersPage() {
                 </div>
               </section>
 
-              <div className="h-px bg-gray-100" />
+              {!HIDE_BOOKINGS && <div className="h-px bg-gray-100" />}
 
               {/* Bookings */}
+              {!HIDE_BOOKINGS && (
               <section>
                 <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
                   <Building2 className="h-4 w-4 text-gray-400" />
@@ -453,6 +461,7 @@ export default function CustomersPage() {
                   ))}
                 </div>
               </section>
+              )}
             </div>
           )}
         </SheetContent>

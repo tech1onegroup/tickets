@@ -58,11 +58,14 @@ export function AdminSidebar() {
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + "/");
 
+  const ticketsOnlyAllowed = new Set(["/admin/tickets", "/admin/customers"]);
   const visibleGroups = isTicketsOnly()
     ? navGroups
         .map((group) => ({
           ...group,
-          items: group.items.filter((item) => item.href === "/admin/tickets"),
+          items: group.items.filter((item) =>
+            ticketsOnlyAllowed.has(item.href)
+          ),
         }))
         .filter((group) => group.items.length > 0)
     : navGroups;

@@ -8,7 +8,7 @@ export const CUSTOMER_ALLOWED = new Set([
   "/profile",
 ]);
 
-export const ADMIN_ALLOWED = new Set(["/admin/tickets"]);
+export const ADMIN_ALLOWED = new Set(["/admin/tickets", "/admin/customers"]);
 
 export function isAllowedPath(
   role: "CUSTOMER" | "ADMIN",
