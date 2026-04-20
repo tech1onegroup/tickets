@@ -269,31 +269,34 @@ function AdminTicketsContent() {
     [router, searchParams]
   );
 
-  const fetchTickets = useCallback(async () => {
-    if (!accessToken) return;
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (filters.q) params.set("q", filters.q);
-      if (filters.status !== "ALL") params.set("status", filters.status);
-      if (filters.category !== "ALL") params.set("category", filters.category);
-      if (filters.priority !== "ALL") params.set("priority", filters.priority);
-      if (filters.unassigned) params.set("unassigned", "true");
-      else if (filters.assignedTo) params.set("assignedTo", filters.assignedTo);
-      const res = await fetch(`/api/admin/tickets?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setTickets(data.tickets);
-        setCounts(data.counts);
+  const fetchTickets = useCallback(
+    async (opts: { silent?: boolean } = {}) => {
+      if (!accessToken) return;
+      if (!opts.silent) setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (filters.q) params.set("q", filters.q);
+        if (filters.status !== "ALL") params.set("status", filters.status);
+        if (filters.category !== "ALL") params.set("category", filters.category);
+        if (filters.priority !== "ALL") params.set("priority", filters.priority);
+        if (filters.unassigned) params.set("unassigned", "true");
+        else if (filters.assignedTo) params.set("assignedTo", filters.assignedTo);
+        const res = await fetch(`/api/admin/tickets?${params.toString()}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setTickets(data.tickets);
+          setCounts(data.counts);
+        }
+      } catch (err) {
+        if (!opts.silent) console.error("Failed to fetch tickets:", err);
+      } finally {
+        if (!opts.silent) setLoading(false);
       }
-    } catch (err) {
-      console.error("Failed to fetch tickets:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [accessToken, filters]);
+    },
+    [accessToken, filters]
+  );
 
   useEffect(() => {
     fetchTickets();
@@ -331,6 +334,93 @@ function AdminTicketsContent() {
     },
     [accessToken]
   );
+
+  // Silently refresh the selected ticket's conversation (preserves composer state)
+  const refreshSelectedTicket = useCallback(
+    async (ticketId?: string) => {
+      const targetId = ticketId || selectedTicket?.id;
+      if (!accessToken || !targetId) return;
+      try {
+        const res = await fetch(`/api/admin/tickets?id=${targetId}`, {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setSelectedTicket((prev) =>
+            prev && prev.id === data.ticket.id ? data.ticket : prev
+          );
+        }
+      } catch {
+        // swallow — background refresh, transient errors are fine
+      }
+    },
+    [accessToken, selectedTicket?.id]
+  );
+
+  // Subscribe to the admin SSE stream — pushes every ticket event server-wide.
+  // Fall back to polling if the stream fails (e.g. proxy drops, network hiccup).
+  useEffect(() => {
+    if (!accessToken) return;
+    let listPoll: ReturnType<typeof setInterval> | null = null;
+    let ticketPoll: ReturnType<typeof setInterval> | null = null;
+    const startPollFallback = () => {
+      if (!listPoll) {
+        listPoll = setInterval(() => {
+          if (document.visibilityState === "visible") {
+            fetchTickets({ silent: true });
+          }
+        }, 8000);
+      }
+      if (!ticketPoll) {
+        ticketPoll = setInterval(() => {
+          if (document.visibilityState === "visible") {
+            refreshSelectedTicket();
+          }
+        }, 4000);
+      }
+    };
+    const stopPollFallback = () => {
+      if (listPoll) {
+        clearInterval(listPoll);
+        listPoll = null;
+      }
+      if (ticketPoll) {
+        clearInterval(ticketPoll);
+        ticketPoll = null;
+      }
+    };
+
+    const es = new EventSource(
+      `/api/admin/tickets/stream?token=${encodeURIComponent(accessToken)}`
+    );
+    es.addEventListener("ready", stopPollFallback);
+    es.onmessage = (e) => {
+      try {
+        const event = JSON.parse(e.data);
+        // Any change means the list counts / waiting dots / ordering could shift
+        fetchTickets({ silent: true });
+
+        if (event.type === "message" && event.ticketId) {
+          setSelectedTicket((prev) => {
+            if (!prev || prev.id !== event.ticketId) return prev;
+            if (prev.messages.some((m) => m.id === event.message.id)) return prev;
+            return { ...prev, messages: [...prev.messages, event.message] };
+          });
+        }
+        if (event.type === "ticket_changed" && event.ticketId) {
+          refreshSelectedTicket(event.ticketId);
+        }
+      } catch {
+        // ignore malformed
+      }
+    };
+    es.onerror = startPollFallback;
+
+    return () => {
+      es.close();
+      stopPollFallback();
+    };
+  }, [accessToken, fetchTickets, refreshSelectedTicket]);
 
   const handleReply = async () => {
     if (!accessToken || !selectedTicket) return;

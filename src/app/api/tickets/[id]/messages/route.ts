@@ -6,6 +6,7 @@ import {
   collectAttachmentFiles,
   uploadAttachments,
 } from "@/lib/ticket-attachments";
+import { emitTicketEvent } from "@/lib/events";
 
 export async function POST(
   request: Request,
@@ -86,20 +87,29 @@ export async function POST(
     data: { updatedAt: new Date() },
   });
 
-  return NextResponse.json(
-    {
-      id: ticketMessage.id,
-      message: ticketMessage.message,
-      attachments: ticketMessage.attachments.map((a) => ({
-        id: a.id,
-        url: a.url,
-        name: a.name,
-        type: a.type,
-        size: a.size,
-      })),
-      createdAt: ticketMessage.createdAt.toISOString(),
-      isCustomer: true,
-    },
-    { status: 201 }
-  );
+  const customerMessage = {
+    id: ticketMessage.id,
+    senderId: ticketMessage.senderId,
+    message: ticketMessage.message,
+    attachments: ticketMessage.attachments.map((a) => ({
+      id: a.id,
+      url: a.url,
+      name: a.name,
+      type: a.type,
+      size: a.size,
+    })),
+    createdAt: ticketMessage.createdAt.toISOString(),
+    isCustomer: true,
+    isAdmin: false,
+    isInternal: false,
+  };
+
+  emitTicketEvent({
+    type: "message",
+    ticketId: id,
+    message: customerMessage,
+    isCustomer: true,
+  });
+
+  return NextResponse.json(customerMessage, { status: 201 });
 }

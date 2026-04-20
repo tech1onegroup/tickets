@@ -6,6 +6,7 @@ import {
   collectAttachmentFiles,
   uploadAttachments,
 } from "@/lib/ticket-attachments";
+import { emitTicketEvent } from "@/lib/events";
 
 export async function GET(request: Request) {
   const auth = await authenticateRequest(request);
@@ -136,6 +137,8 @@ export async function POST(request: Request) {
         },
       },
     });
+
+    emitTicketEvent({ type: "ticket_created", ticketId: ticket.id });
 
     return NextResponse.json(
       { id: ticket.id, ticketRef: ticket.ticketRef },

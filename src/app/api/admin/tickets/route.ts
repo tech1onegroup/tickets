@@ -7,6 +7,7 @@ import {
   collectAttachmentFiles,
   uploadAttachments,
 } from "@/lib/ticket-attachments";
+import { emitTicketEvent } from "@/lib/events";
 
 const VALID_PRIORITIES = new Set(["LOW", "MEDIUM", "HIGH", "URGENT"]);
 const STALE_MS = 48 * 60 * 60 * 1000;
@@ -314,7 +315,7 @@ export async function PATCH(request: Request) {
 
       const sanitizedReply = reply ? sanitizeInput(reply) : "";
 
-      await prisma.ticketMessage.create({
+      const created = await prisma.ticketMessage.create({
         data: {
           ticketId,
           senderId: auth.user.userId,
@@ -329,6 +330,7 @@ export async function PATCH(request: Request) {
             })),
           },
         },
+        include: { attachments: true },
       });
 
       if (!isInternal && ticket.status === "OPEN") {
@@ -337,6 +339,32 @@ export async function PATCH(request: Request) {
           data: { status: "IN_PROGRESS", assignedTo: auth.user.userId },
         });
       }
+
+      emitTicketEvent({
+        type: "message",
+        ticketId,
+        isCustomer: false,
+        message: {
+          id: created.id,
+          senderId: created.senderId,
+          message: created.message,
+          isAdmin: true,
+          isCustomer: false,
+          isInternal: created.isInternal,
+          attachments: created.attachments.map((a) => ({
+            id: a.id,
+            url: a.url,
+            name: a.name,
+            type: a.type,
+            size: a.size,
+          })),
+          createdAt: created.createdAt.toISOString(),
+        },
+      });
+    }
+
+    if (status || priority || assignedTo !== undefined) {
+      emitTicketEvent({ type: "ticket_changed", ticketId });
     }
 
     const notifyBody = isInternal

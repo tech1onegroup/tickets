@@ -139,10 +139,58 @@ export default function TicketDetailPage({
   useEffect(() => {
     if (!accessToken || !id) return;
     fetchTicket();
+
+    // Live updates via Server-Sent Events. Fallback to polling if stream errors.
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
+    const es = new EventSource(
+      `/api/tickets/${id}/stream?token=${encodeURIComponent(accessToken)}`
+    );
+    es.onmessage = (e) => {
+      try {
+        const event = JSON.parse(e.data);
+        if (event.type === "message") {
+          setTicket((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  messages: prev.messages.some((m) => m.id === event.message.id)
+                    ? prev.messages
+                    : [...prev.messages, event.message],
+                  updatedAt: new Date().toISOString(),
+                }
+              : prev
+          );
+        } else if (event.type === "ticket_changed") {
+          fetchTicket({ silent: true });
+        }
+      } catch {
+        // ignore malformed frames
+      }
+    };
+    es.onerror = () => {
+      // Network/proxy hiccup — fall back to polling until the stream reconnects.
+      if (!pollTimer) {
+        pollTimer = setInterval(() => {
+          if (document.visibilityState === "visible") {
+            fetchTicket({ silent: true });
+          }
+        }, 5000);
+      }
+    };
+    es.addEventListener("ready", () => {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    });
+    return () => {
+      es.close();
+      if (pollTimer) clearInterval(pollTimer);
+    };
   }, [accessToken, id]);
 
-  async function fetchTicket() {
-    setLoading(true);
+  async function fetchTicket(opts: { silent?: boolean } = {}) {
+    if (!opts.silent) setLoading(true);
     try {
       const res = await fetch(`/api/tickets/${id}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -153,7 +201,7 @@ export default function TicketDetailPage({
     } catch (err) {
       console.error("Failed to load ticket:", err);
     } finally {
-      setLoading(false);
+      if (!opts.silent) setLoading(false);
     }
   }
 
