@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
@@ -195,6 +195,14 @@ function AttachmentBubble({
 }
 
 export default function AdminTicketsPage() {
+  return (
+    <Suspense>
+      <AdminTicketsContent />
+    </Suspense>
+  );
+}
+
+function AdminTicketsContent() {
   const { accessToken, user } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();

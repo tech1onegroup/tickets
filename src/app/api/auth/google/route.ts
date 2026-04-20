@@ -5,15 +5,26 @@ import {
   buildAuthorizeUrl,
 } from "@/lib/google-oauth";
 
+function getPublicOrigin(request: Request): string {
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  if (forwardedHost) {
+    return `${forwardedProto || "https"}://${forwardedHost}`;
+  }
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return process.env.NEXT_PUBLIC_APP_URL;
+  }
+  return new URL(request.url).origin;
+}
+
 export async function GET(request: Request) {
   if (!isGoogleConfigured()) {
     return NextResponse.redirect(
-      new URL("/login?googleError=not_configured", request.url)
+      new URL("/login?googleError=not_configured", getPublicOrigin(request))
     );
   }
 
-  const url = new URL(request.url);
-  const origin = url.origin;
+  const origin = getPublicOrigin(request);
   const state = generateState();
 
   const res = NextResponse.redirect(buildAuthorizeUrl(origin, state));

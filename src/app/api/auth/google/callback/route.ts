@@ -6,9 +6,23 @@ import {
   exchangeCodeForUserInfo,
 } from "@/lib/google-oauth";
 
+// Get the public-facing origin (accounts for Caddy/nginx reverse proxy)
+function getPublicOrigin(request: Request): string {
+  const forwardedHost = request.headers.get("x-forwarded-host");
+  const forwardedProto = request.headers.get("x-forwarded-proto");
+  if (forwardedHost) {
+    return `${forwardedProto || "https"}://${forwardedHost}`;
+  }
+  if (process.env.NEXT_PUBLIC_APP_URL) {
+    return process.env.NEXT_PUBLIC_APP_URL;
+  }
+  return new URL(request.url).origin;
+}
+
 function errorRedirect(request: Request, code: string) {
+  const origin = getPublicOrigin(request);
   return NextResponse.redirect(
-    new URL(`/login?googleError=${code}`, request.url)
+    new URL(`/login?googleError=${code}`, origin)
   );
 }
 
@@ -39,9 +53,11 @@ export async function GET(request: Request) {
     return errorRedirect(request, "state_mismatch");
   }
 
+  const publicOrigin = getPublicOrigin(request);
+
   let info;
   try {
-    info = await exchangeCodeForUserInfo(code, url.origin);
+    info = await exchangeCodeForUserInfo(code, publicOrigin);
   } catch (e) {
     console.error("Google OAuth exchange failed:", e);
     return errorRedirect(request, "exchange_failed");
@@ -96,7 +112,7 @@ export async function GET(request: Request) {
 
   // Hand off access token via URL fragment (never hits server logs)
   const redirect = NextResponse.redirect(
-    new URL(`/auth/google-complete#token=${accessToken}`, request.url)
+    new URL(`/auth/google-complete#token=${accessToken}`, publicOrigin)
   );
   redirect.cookies.set("refresh_token", refreshToken, {
     httpOnly: true,

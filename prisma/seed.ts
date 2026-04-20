@@ -1,13 +1,12 @@
 import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
-import { PrismaLibSql } from "@prisma/adapter-libsql";
-import { createClient } from "@libsql/client";
+import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
-import { resolve } from "path";
 
-const dbPath = resolve(process.cwd(), "dev.db");
-console.log("DB:", dbPath);
-const adapter = new PrismaLibSql({ url: `file:${dbPath}` });
+const connectionString = process.env.DATABASE_URL;
+if (!connectionString) throw new Error("DATABASE_URL is not set");
+console.log("DB:", connectionString.replace(/:[^:@]+@/, ":****@"));
+const adapter = new PrismaPg({ connectionString }, { schema: "tickets" });
 const prisma = new PrismaClient({ adapter } as any);
 
 async function main() {

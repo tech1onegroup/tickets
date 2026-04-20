@@ -33,8 +33,10 @@ import {
   AlertCircle,
   Loader2,
   MessageSquare,
+  UserPlus,
 } from "lucide-react";
 import { SendMessageDialog } from "@/components/admin/send-message-dialog";
+import { CreateCustomerDialog } from "@/components/admin/create-customer-dialog";
 import { isTicketsOnly } from "@/lib/features";
 
 const HIDE_BOOKINGS = isTicketsOnly();
@@ -128,6 +130,7 @@ export default function CustomersPage() {
   const [messagingTarget, setMessagingTarget] = useState<
     { customerId: string; customerName: string } | null
   >(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -182,9 +185,15 @@ export default function CustomersPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Customers</h1>
-        <p className="text-gray-500 mt-1">Manage all registered customers</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Customers</h1>
+          <p className="text-gray-500 mt-1">Manage all registered customers</p>
+        </div>
+        <Button onClick={() => setCreateOpen(true)} className="gap-1.5">
+          <UserPlus className="h-4 w-4" />
+          New Customer
+        </Button>
       </div>
 
       <Card>
@@ -471,6 +480,15 @@ export default function CustomersPage() {
         target={messagingTarget}
         onClose={() => setMessagingTarget(null)}
         accessToken={accessToken}
+      />
+
+      <CreateCustomerDialog
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        accessToken={accessToken}
+        onCreated={(newCustomer) => {
+          setCustomers((prev) => [newCustomer, ...prev]);
+        }}
       />
     </div>
   );
