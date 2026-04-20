@@ -2,11 +2,12 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { redis } from "@/lib/redis";
 import { generateOtp } from "@/lib/auth";
-import { sendOtp } from "@/lib/msg91";
+import { sendOtpViaWhatsApp } from "@/lib/evolution-api";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 
-const isDev = process.env.NODE_ENV !== "production";
+// Use dev mode when no WhatsApp (Evolution API) provider is configured
+const isDev = !process.env.EVOLUTION_API_KEY || !process.env.EVOLUTION_BASE_URL;
 
 const schema = z.object({
   phone: z.string().regex(/^[6-9]\d{9}$/, "Invalid Indian phone number"),
@@ -26,6 +27,25 @@ export async function POST(request: Request) {
 
     const { phone } = parsed.data;
     const fullPhone = `91${phone}`;
+
+    // Only allow OTP for phones that are already registered — customers
+    // (User with a linked Customer profile) or admins (ADMIN / SUPER_ADMIN).
+    // Generic return message so we don't leak whether a number is in the system.
+    const user = await prisma.user.findUnique({
+      where: { phone },
+      include: { customer: true },
+    });
+    const isAdmin = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
+    const isCustomer = Boolean(user?.customer);
+    if (!user || !user.isActive || (!isCustomer && !isAdmin)) {
+      return NextResponse.json(
+        {
+          error:
+            "This phone number is not registered. Please contact ONE Group support.",
+        },
+        { status: 403 }
+      );
+    }
 
     // Rate limit: relaxed in dev
     const maxAttempts = isDev ? 100 : 3;
@@ -51,16 +71,23 @@ export async function POST(request: Request) {
       },
     });
 
-    // Send OTP via MSG91 (in dev mode, logs to console)
-    await sendOtp(fullPhone);
-
+    // Send OTP via WhatsApp (Evolution API). In dev mode, logs to console.
     if (isDev) {
       console.log(`[DEV] OTP for ${phone}: ${otp}`);
+    } else {
+      const result = await sendOtpViaWhatsApp(fullPhone, otp);
+      if (!result.success) {
+        console.error(`Failed to send OTP to ${phone}:`, result.error);
+        return NextResponse.json(
+          { error: "Failed to send OTP via WhatsApp. Please try again." },
+          { status: 502 }
+        );
+      }
     }
 
     return NextResponse.json({
       success: true,
-      message: "OTP sent successfully",
+      message: "OTP sent successfully via WhatsApp",
     });
   } catch (error) {
     console.error("Send OTP error:", error);

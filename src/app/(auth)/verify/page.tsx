@@ -138,10 +138,6 @@ function VerifyForm() {
               {loading ? "Verifying..." : "Verify & Login"}
             </Button>
 
-            <p className="text-center text-xs text-gray-400">
-              Dev OTP: 123456
-            </p>
-
             <button
               type="button"
               onClick={() => router.push("/login")}

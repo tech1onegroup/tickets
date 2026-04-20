@@ -69,12 +69,22 @@ export async function POST(request: Request) {
       data: { verified: true },
     });
 
-    // Find or create user
-    let user = await prisma.user.findUnique({ where: { phone } });
-    if (!user) {
-      user = await prisma.user.create({
-        data: { phone },
-      });
+    // Only allow login for existing users (customer or admin).
+    // Do NOT auto-create accounts from an OTP verification.
+    const user = await prisma.user.findUnique({
+      where: { phone },
+      include: { customer: true },
+    });
+    const isAdmin = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
+    const isCustomer = Boolean(user?.customer);
+    if (!user || !user.isActive || (!isCustomer && !isAdmin)) {
+      return NextResponse.json(
+        {
+          error:
+            "This phone number is not registered. Please contact ONE Group support.",
+        },
+        { status: 403 }
+      );
     }
 
     // Update last login

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { isTicketsOnly } from "@/lib/features";
@@ -53,6 +53,14 @@ function GoogleIcon({ className }: { className?: string }) {
 }
 
 export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginContent />
+    </Suspense>
+  );
+}
+
+function LoginContent() {
   const [phone, setPhone] = useState("");
   const [step, setStep] = useState<Step>("phone");
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
@@ -470,14 +478,6 @@ export default function LoginPage() {
                   )}
                 </Button>
 
-                <div className="text-center">
-                  <p className="text-xs text-muted-foreground bg-muted inline-block px-3 py-1.5 rounded-full">
-                    Dev OTP:{" "}
-                    <span className="font-mono font-bold text-foreground">
-                      123456
-                    </span>
-                  </p>
-                </div>
               </form>
             </div>
           )}
@@ -593,10 +593,6 @@ export default function LoginPage() {
                       required
                     />
                   </div>
-                  <p className="text-xs text-muted-foreground">
-                    Dev code:{" "}
-                    <span className="font-mono font-bold">ONEGROUP2025</span>
-                  </p>
                 </div>
 
                 {error && (
