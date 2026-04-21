@@ -20,6 +20,21 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // File serving: unguessable CUID+timestamp paths act as the capability,
+  // similar to S3 presigned URLs. Browsers can't attach Authorization to <a> clicks.
+  if (pathname.startsWith("/api/files/")) {
+    return NextResponse.next();
+  }
+
+  // SSE streams: EventSource cannot set custom headers, so the route handlers
+  // themselves accept ?token= as a fallback. Let them through here.
+  if (
+    pathname === "/api/admin/tickets/stream" ||
+    /^\/api\/tickets\/[^/]+\/stream$/.test(pathname)
+  ) {
+    return NextResponse.next();
+  }
+
   // Check for auth token on protected API routes
   const authHeader = request.headers.get("authorization");
   const token = authHeader?.replace("Bearer ", "");

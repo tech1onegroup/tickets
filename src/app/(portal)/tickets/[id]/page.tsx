@@ -7,10 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { ArrowLeft, Send, User, Headphones, FileText } from "lucide-react";
+import { ArrowLeft, Send, User, Headphones, FileText, Download } from "lucide-react";
 import {
   AttachmentPicker,
   appendAttachmentsToFormData,
+  filesFromClipboard,
 } from "@/components/shared/attachment-picker";
 
 interface TicketDetail {
@@ -73,43 +74,77 @@ function MessageAttachment({
 }) {
   const isImage = (type || "").startsWith("image/");
   const sizeKb = size ? `${(size / 1024).toFixed(0)} KB` : "";
+  const downloadHref = buildDownloadHref(url, name);
   if (isImage) {
     return (
+      <div className="mt-2 space-y-1">
+        <a href={url} target="_blank" rel="noopener noreferrer" className="block">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={url}
+            alt={name}
+            className="max-h-64 rounded-md border border-white/10"
+          />
+        </a>
+        <a
+          href={downloadHref}
+          download={name}
+          className={`inline-flex items-center gap-1 text-xs underline ${
+            invert ? "text-gray-200" : "text-gray-600"
+          }`}
+        >
+          <Download className="h-3 w-3" />
+          Download
+        </a>
+      </div>
+    );
+  }
+  return (
+    <div
+      className={`mt-2 flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${
+        invert
+          ? "border-white/20 bg-white/10 text-white"
+          : "border-gray-200 bg-white text-gray-900"
+      }`}
+    >
+      <FileText className="h-4 w-4 flex-shrink-0" />
       <a
         href={url}
         target="_blank"
         rel="noopener noreferrer"
-        className="mt-2 block"
+        className="flex-1 truncate hover:underline"
+        title="Open"
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={url}
-          alt={name}
-          className="max-h-64 rounded-md border border-white/10"
-        />
+        {name}
       </a>
-    );
-  }
-  return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={`mt-2 flex items-center gap-2 rounded-md border px-3 py-2 text-sm ${
-        invert
-          ? "border-white/20 bg-white/10 text-white hover:bg-white/20"
-          : "border-gray-200 bg-white text-gray-900 hover:bg-gray-50"
-      }`}
-    >
-      <FileText className="h-4 w-4" />
-      <span className="flex-1 truncate">{name}</span>
       {sizeKb && (
         <span className={invert ? "text-gray-300 text-xs" : "text-gray-500 text-xs"}>
           {sizeKb}
         </span>
       )}
-    </a>
+      <a
+        href={downloadHref}
+        download={name}
+        className={`flex-shrink-0 rounded p-1 ${
+          invert
+            ? "hover:bg-white/20 text-gray-200"
+            : "hover:bg-gray-100 text-gray-600"
+        }`}
+        title="Download"
+      >
+        <Download className="h-4 w-4" />
+      </a>
+    </div>
   );
+}
+
+function buildDownloadHref(url: string, name: string): string {
+  // Force attachment download via ?download=1 for our own /api/files/ URLs.
+  // External (e.g. S3 presigned) URLs fall through unchanged — the <a download>
+  // attribute handles the hint on same-origin links, ignored cross-origin.
+  if (!url.startsWith("/api/files/")) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}download=1&name=${encodeURIComponent(name)}`;
 }
 
 const categoryLabels: Record<string, string> = {
@@ -380,12 +415,32 @@ export default function TicketDetailPage({
 
           {/* Reply Form */}
           {!isClosed && (
-            <div className="mt-6 space-y-3">
+            <div
+              className="mt-6 space-y-3"
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onDrop={(e) => {
+                const dropped = Array.from(e.dataTransfer.files || []);
+                if (dropped.length === 0) return;
+                e.preventDefault();
+                e.stopPropagation();
+                setAttachments((prev) => [...prev, ...dropped].slice(0, 10));
+              }}
+            >
               <div className="flex gap-3">
                 <Textarea
                   value={reply}
                   onChange={(e) => setReply(e.target.value)}
-                  placeholder="Type your reply..."
+                  onPaste={(e) => {
+                    const pasted = filesFromClipboard(e);
+                    if (pasted.length > 0) {
+                      e.preventDefault();
+                      setAttachments((prev) => [...prev, ...pasted].slice(0, 10));
+                    }
+                  }}
+                  placeholder="Type your reply... (drag, drop, or paste files)"
                   rows={3}
                   className="flex-1"
                 />

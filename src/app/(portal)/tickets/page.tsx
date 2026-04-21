@@ -35,6 +35,7 @@ import { Plus, MessageSquare, Clock } from "lucide-react";
 import {
   AttachmentPicker,
   appendAttachmentsToFormData,
+  filesFromClipboard,
 } from "@/components/shared/attachment-picker";
 
 interface Ticket {
@@ -184,7 +185,20 @@ export default function TicketsPage() {
             <DialogHeader>
               <DialogTitle>Create Support Ticket</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 mt-4">
+            <div
+              className="space-y-4 mt-4"
+              onDragOver={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              }}
+              onDrop={(e) => {
+                const dropped = Array.from(e.dataTransfer.files || []);
+                if (dropped.length === 0) return;
+                e.preventDefault();
+                e.stopPropagation();
+                setAttachments((prev) => [...prev, ...dropped].slice(0, 10));
+              }}
+            >
               <p className="text-xs text-gray-500">
                 All fields are optional — fill in whatever helps us understand your issue.
               </p>
@@ -225,7 +239,16 @@ export default function TicketsPage() {
                   onChange={(e) =>
                     setForm((f) => ({ ...f, description: e.target.value }))
                   }
-                  placeholder="Describe your issue in detail"
+                  onPaste={(e) => {
+                    const pasted = filesFromClipboard(e);
+                    if (pasted.length > 0) {
+                      e.preventDefault();
+                      setAttachments((prev) =>
+                        [...prev, ...pasted].slice(0, 10)
+                      );
+                    }
+                  }}
+                  placeholder="Describe your issue in detail (drag, drop, or paste files)"
                   rows={4}
                 />
               </div>

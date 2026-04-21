@@ -25,7 +25,9 @@ export async function uploadFile(
     const subdir = parts.join("/");
     const dir = await ensureUploadDir(subdir);
     await writeFile(join(dir, filename), body);
-    return `/uploads/${key}`;
+    // Files under public/uploads are NOT served by Next.js at runtime in
+    // production (public/ is static). Serve via the /api/files proxy instead.
+    return `/api/files/${key}`;
   }
 
   // S3 upload for production
@@ -53,7 +55,8 @@ export async function uploadFile(
 
 export async function getPresignedUrl(key: string): Promise<string> {
   if (USE_LOCAL) {
-    return key.startsWith("/uploads/") ? key : `/uploads/${key}`;
+    if (key.startsWith("/api/files/") || key.startsWith("/uploads/")) return key;
+    return `/api/files/${key}`;
   }
 
   const { S3Client, GetObjectCommand } = await import("@aws-sdk/client-s3");
@@ -80,7 +83,10 @@ export async function getPresignedUrl(key: string): Promise<string> {
 
 export async function deleteFile(key: string): Promise<void> {
   if (USE_LOCAL) {
-    const filePath = join(UPLOAD_DIR, key.replace("/uploads/", ""));
+    const rel = key
+      .replace(/^\/api\/files\//, "")
+      .replace(/^\/uploads\//, "");
+    const filePath = join(UPLOAD_DIR, rel);
     try {
       await unlink(filePath);
     } catch {

@@ -41,10 +41,12 @@ import {
   FileText,
   Search,
   Lock,
+  Download,
 } from "lucide-react";
 import {
   AttachmentPicker,
   appendAttachmentsToFormData,
+  filesFromClipboard,
 } from "@/components/shared/attachment-picker";
 
 interface TicketRow {
@@ -168,30 +170,64 @@ function AttachmentBubble({
 }) {
   const isImage = (type || "").startsWith("image/");
   const sizeKb = size ? `${(size / 1024).toFixed(0)} KB` : "";
+  const downloadHref = buildDownloadHref(url, name);
   if (isImage) {
     return (
-      <a href={url} target="_blank" rel="noopener noreferrer" className="mt-2 block">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={url} alt={name} className="max-h-64 rounded-md border border-white/10" />
-      </a>
+      <div className="mt-2 space-y-1">
+        <a href={url} target="_blank" rel="noopener noreferrer" className="block">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={url} alt={name} className="max-h-64 rounded-md border border-white/10" />
+        </a>
+        <a
+          href={downloadHref}
+          download={name}
+          className={`inline-flex items-center gap-1 text-[11px] underline ${
+            invert ? "text-indigo-200" : "text-gray-600"
+          }`}
+        >
+          <Download className="h-3 w-3" />
+          Download
+        </a>
+      </div>
     );
   }
   return (
-    <a
-      href={url}
-      target="_blank"
-      rel="noopener noreferrer"
+    <div
       className={`mt-2 flex items-center gap-2 rounded-md border px-3 py-2 text-xs ${
         invert
-          ? "border-white/20 bg-white/10 text-white hover:bg-white/20"
-          : "border-gray-200 bg-white text-gray-900 hover:bg-gray-50"
+          ? "border-white/20 bg-white/10 text-white"
+          : "border-gray-200 bg-white text-gray-900"
       }`}
     >
-      <FileText className="h-4 w-4" />
-      <span className="flex-1 truncate">{name}</span>
+      <FileText className="h-4 w-4 flex-shrink-0" />
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex-1 truncate hover:underline"
+        title="Open"
+      >
+        {name}
+      </a>
       {sizeKb && <span className={invert ? "text-indigo-200" : "text-gray-500"}>{sizeKb}</span>}
-    </a>
+      <a
+        href={downloadHref}
+        download={name}
+        className={`flex-shrink-0 rounded p-1 ${
+          invert ? "hover:bg-white/20" : "hover:bg-gray-100"
+        }`}
+        title="Download"
+      >
+        <Download className="h-3.5 w-3.5" />
+      </a>
+    </div>
   );
+}
+
+function buildDownloadHref(url: string, name: string): string {
+  if (!url.startsWith("/api/files/")) return url;
+  const sep = url.includes("?") ? "&" : "?";
+  return `${url}${sep}download=1&name=${encodeURIComponent(name)}`;
 }
 
 export default function AdminTicketsPage() {
@@ -993,7 +1029,22 @@ function AdminTicketsContent() {
 
                 {/* Reply composer */}
                 {selectedTicket.status !== "CLOSED" && (
-                  <div className="space-y-2">
+                  <div
+                    className="space-y-2"
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onDrop={(e) => {
+                      const dropped = Array.from(e.dataTransfer.files || []);
+                      if (dropped.length === 0) return;
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setAttachments((prev) =>
+                        [...prev, ...dropped].slice(0, 10)
+                      );
+                    }}
+                  >
                     <label className="flex items-center gap-2 text-xs text-gray-600 cursor-pointer">
                       <input
                         type="checkbox"
@@ -1008,7 +1059,20 @@ function AdminTicketsContent() {
                       <Textarea
                         value={reply}
                         onChange={(e) => setReply(e.target.value)}
-                        placeholder={isInternal ? "Private note for the team..." : "Type your reply..."}
+                        onPaste={(e) => {
+                          const pasted = filesFromClipboard(e);
+                          if (pasted.length > 0) {
+                            e.preventDefault();
+                            setAttachments((prev) =>
+                              [...prev, ...pasted].slice(0, 10)
+                            );
+                          }
+                        }}
+                        placeholder={
+                          isInternal
+                            ? "Private note for the team... (drag, drop, paste files)"
+                            : "Type your reply... (drag, drop, paste files)"
+                        }
                         rows={2}
                         className={`flex-1 resize-none ${
                           isInternal ? "bg-amber-50 border-amber-200" : ""
