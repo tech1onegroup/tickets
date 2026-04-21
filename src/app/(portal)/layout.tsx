@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { PortalSidebar } from "@/components/shared/portal-sidebar";
 import { ErrorBoundary } from "@/components/shared/error-boundary";
+import { NotificationProvider } from "@/contexts/notification-context";
 import { Building2, Menu, X } from "lucide-react";
 import { isAllowedPath } from "@/lib/features";
 
@@ -47,6 +48,7 @@ export default function PortalLayout({
   if (!user) return null;
 
   return (
+    <NotificationProvider>
     <div className="flex min-h-screen bg-background">
       {/* Desktop sidebar - always visible */}
       <div className="hidden lg:block">
@@ -93,5 +95,6 @@ export default function PortalLayout({
         </main>
       </div>
     </div>
+    </NotificationProvider>
   );
 }

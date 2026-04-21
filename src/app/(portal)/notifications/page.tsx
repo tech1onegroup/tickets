@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
+import { useNotifications } from "@/contexts/notification-context";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -88,25 +89,28 @@ function formatRelativeTime(dateStr: string): string {
 
 export default function NotificationsPage() {
   const { accessToken } = useAuth();
+  const {
+    unreadCount,
+    lastUpdated,
+    markAsRead: ctxMarkAsRead,
+    markAllRead: ctxMarkAllRead,
+  } = useNotifications();
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!accessToken) return;
-    fetchNotifications();
-  }, [accessToken]);
+  const accessTokenRef = useRef(accessToken);
+  accessTokenRef.current = accessToken;
 
   async function fetchNotifications() {
+    const token = accessTokenRef.current;
+    if (!token) return;
     setLoading(true);
     try {
       const res = await fetch("/api/notifications", {
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
         const data = await res.json();
         setNotifications(data.notifications);
-        setUnreadCount(data.unreadCount);
       }
     } catch (err) {
       console.error("Failed to load notifications:", err);
@@ -115,44 +119,28 @@ export default function NotificationsPage() {
     }
   }
 
+  // Initial load
+  useEffect(() => {
+    if (!accessToken) return;
+    fetchNotifications();
+  }, [accessToken]);
+
+  // Re-fetch whenever the context signals a server-side change (SSE or poll)
+  useEffect(() => {
+    if (!lastUpdated) return;
+    fetchNotifications();
+  }, [lastUpdated]);
+
   async function markAsRead(notificationId: string) {
-    try {
-      await fetch("/api/notifications", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ notificationId }),
-      });
-      setNotifications((prev) =>
-        prev.map((n) =>
-          n.id === notificationId ? { ...n, isRead: true } : n
-        )
-      );
-      setUnreadCount((c) => Math.max(0, c - 1));
-    } catch (err) {
-      console.error("Failed to mark as read:", err);
-    }
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === notificationId ? { ...n, isRead: true } : n))
+    );
+    await ctxMarkAsRead(notificationId);
   }
 
   async function markAllRead() {
-    try {
-      await fetch("/api/notifications", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ markAllRead: true }),
-      });
-      setNotifications((prev) =>
-        prev.map((n) => ({ ...n, isRead: true }))
-      );
-      setUnreadCount(0);
-    } catch (err) {
-      console.error("Failed to mark all as read:", err);
-    }
+    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    await ctxMarkAllRead();
   }
 
   if (loading) {
@@ -177,13 +165,13 @@ export default function NotificationsPage() {
               Stay updated on your account activity
             </p>
           </div>
-          {unreadCount > 0 && (
+          {!!unreadCount && (
             <Badge className="bg-primary text-primary-foreground border-0 font-semibold px-3 py-1 text-sm shadow-sm">
               {unreadCount} unread
             </Badge>
           )}
         </div>
-        {unreadCount > 0 && (
+        {!!unreadCount && (
           <Button
             variant="outline"
             size="sm"

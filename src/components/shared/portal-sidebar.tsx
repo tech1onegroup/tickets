@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { isTicketsOnly } from "@/lib/features";
 import { useAuth } from "@/hooks/use-auth";
+import { useNotifications } from "@/contexts/notification-context";
 import {
   LayoutDashboard,
   CreditCard,
@@ -66,6 +67,7 @@ const TICKETS_ONLY_HREFS = new Set(["/tickets", "/notifications", "/profile"]);
 export function PortalSidebar() {
   const pathname = usePathname();
   const { user, logout } = useAuth();
+  const { unreadCount } = useNotifications();
 
   const visibleSections = isTicketsOnly()
     ? navSections
@@ -140,10 +142,20 @@ export function PortalSidebar() {
                     <span className="flex-1">{item.label}</span>
 
                     {/* Notification badge */}
-                    {"badge" in item && item.badge && (
+                    {"badge" in item && item.badge && unreadCount !== null && (
                       <span className="relative flex h-2 w-2">
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-                        <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+                        <span
+                          className={cn(
+                            "absolute inline-flex h-full w-full animate-ping rounded-full opacity-75",
+                            unreadCount > 0 ? "bg-red-400" : "bg-green-400"
+                          )}
+                        />
+                        <span
+                          className={cn(
+                            "relative inline-flex h-2 w-2 rounded-full",
+                            unreadCount > 0 ? "bg-red-500" : "bg-green-500"
+                          )}
+                        />
                       </span>
                     )}
 

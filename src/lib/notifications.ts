@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { sendEmail, wrapBrandedEmail } from "@/lib/email";
+import { emitNotificationEvent } from "@/lib/events";
 
 type CreateNotificationInput = {
   customerId?: string;
@@ -29,6 +30,13 @@ export async function createNotification(params: CreateNotificationInput) {
       sentAt: new Date(),
     },
   });
+
+  if (notification.customerId) {
+    const unreadCount = await prisma.notification.count({
+      where: { customerId: notification.customerId, isRead: false },
+    });
+    emitNotificationEvent(notification.customerId, { type: "unread_count", unreadCount });
+  }
 
   if (channels.includes("EMAIL") && params.email) {
     try {

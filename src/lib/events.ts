@@ -39,3 +39,23 @@ export function onAdminEvent(
   bus.on(ADMIN_CHANNEL, handler);
   return () => bus.off(ADMIN_CHANNEL, handler);
 }
+
+export type NotificationEvent = {
+  type: "unread_count";
+  unreadCount: number;
+};
+
+const NOTIFICATION_CHANNEL = (customerId: string) => `notification:${customerId}`;
+
+export function emitNotificationEvent(customerId: string, event: NotificationEvent) {
+  bus.emit(NOTIFICATION_CHANNEL(customerId), event);
+}
+
+export function onNotificationEvent(
+  customerId: string,
+  handler: (event: NotificationEvent) => void
+): () => void {
+  const channel = NOTIFICATION_CHANNEL(customerId);
+  bus.on(channel, handler);
+  return () => bus.off(channel, handler);
+}

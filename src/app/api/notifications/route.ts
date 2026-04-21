@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { authenticateRequest } from "@/lib/api-auth";
+import { emitNotificationEvent } from "@/lib/events";
 
 export async function GET(request: Request) {
   const auth = await authenticateRequest(request);
@@ -56,6 +57,7 @@ export async function PATCH(request: Request) {
       where: { customerId: customer.id, isRead: false },
       data: { isRead: true },
     });
+    emitNotificationEvent(customer.id, { type: "unread_count", unreadCount: 0 });
     return NextResponse.json({ success: true });
   }
 
@@ -78,6 +80,11 @@ export async function PATCH(request: Request) {
     where: { id: notificationId },
     data: { isRead: true },
   });
+
+  const unreadCount = await prisma.notification.count({
+    where: { customerId: customer.id, isRead: false },
+  });
+  emitNotificationEvent(customer.id, { type: "unread_count", unreadCount });
 
   return NextResponse.json({ success: true });
 }
