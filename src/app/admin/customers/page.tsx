@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -34,17 +34,22 @@ import {
   Loader2,
   MessageSquare,
   UserPlus,
+  Pencil,
+  Save,
+  X,
+  Upload,
+  CheckCircle2,
 } from "lucide-react";
 import { SendMessageDialog } from "@/components/admin/send-message-dialog";
 import { CreateCustomerDialog } from "@/components/admin/create-customer-dialog";
 import { isTicketsOnly } from "@/lib/features";
 
-const HIDE_BOOKINGS = isTicketsOnly();
+const HIDE_BOOKINGS_IN_LIST = isTicketsOnly();
 
 interface CustomerRow {
   id: string;
   name: string;
-  phone: string;
+  phone: string | null;
   email: string | null;
   bookingsCount: number;
   createdAt: string;
@@ -54,7 +59,7 @@ interface CustomerDetail {
   id: string;
   name: string;
   title: string | null;
-  phone: string;
+  phone: string | null;
   altPhone: string | null;
   email: string | null;
   address: string | null;
@@ -66,7 +71,7 @@ interface CustomerDetail {
   profession: string | null;
   companyName: string | null;
   createdAt: string;
-  user: { phone: string; email: string | null; role: string; lastLoginAt: string | null };
+  user: { phone: string | null; email: string | null; role: string; lastLoginAt: string | null };
   bookings: Array<{
     id: string;
     bookingRef: string;
@@ -95,6 +100,21 @@ interface CustomerDetail {
       escalationStage: number;
     }>;
   }>;
+}
+
+interface EditForm {
+  title: string;
+  name: string;
+  email: string;
+  altPhone: string;
+  address: string;
+  city: string;
+  state: string;
+  pincode: string;
+  panNumber: string;
+  aadhaarNumber: string;
+  profession: string;
+  companyName: string;
 }
 
 const formatINR = (n: number) =>
@@ -127,10 +147,22 @@ export default function CustomersPage() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [detail, setDetail] = useState<CustomerDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState<EditForm | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [messagingTarget, setMessagingTarget] = useState<
     { customerId: string; customerName: string } | null
   >(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    imported: number;
+    skipped: number;
+    errors: string[];
+    totalErrors: number;
+  } | null>(null);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -157,6 +189,9 @@ export default function CustomersPage() {
     setOpenId(id);
     setDetail(null);
     setDetailLoading(true);
+    setIsEditing(false);
+    setEditForm(null);
+    setSaveError(null);
     try {
       const res = await fetch(`/api/admin/customers/${id}`, {
         headers: { Authorization: `Bearer ${accessToken}` },
@@ -169,10 +204,110 @@ export default function CustomersPage() {
     }
   }
 
+  function startEdit() {
+    if (!detail) return;
+    setEditForm({
+      title: detail.title || "",
+      name: detail.name,
+      email: detail.email || "",
+      altPhone: detail.altPhone || "",
+      address: detail.address || "",
+      city: detail.city || "",
+      state: detail.state || "",
+      pincode: detail.pincode || "",
+      panNumber: detail.panNumber || "",
+      aadhaarNumber: detail.aadhaarNumber || "",
+      profession: detail.profession || "",
+      companyName: detail.companyName || "",
+    });
+    setIsEditing(true);
+    setSaveError(null);
+  }
+
+  function cancelEdit() {
+    setIsEditing(false);
+    setEditForm(null);
+    setSaveError(null);
+  }
+
+  async function saveEdit() {
+    if (!editForm || !detail) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const res = await fetch(`/api/admin/customers/${detail.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify(editForm),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setSaveError(data.error || "Failed to save");
+        return;
+      }
+      setDetail((prev) => (prev ? { ...prev, ...data } : prev));
+      setCustomers((prev) =>
+        prev.map((c) =>
+          c.id === detail.id
+            ? { ...c, name: data.name, email: data.email }
+            : c
+        )
+      );
+      setIsEditing(false);
+      setEditForm(null);
+    } catch (err) {
+      console.error(err);
+      setSaveError("Network error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleImportCSV(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/admin/customers/import", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}` },
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setImportResult({ imported: 0, skipped: 0, errors: [data.error], totalErrors: 1 });
+      } else {
+        setImportResult(data);
+        if (data.imported > 0) {
+          // Refresh the list
+          const listRes = await fetch("/api/admin/customers", {
+            headers: { Authorization: `Bearer ${accessToken}` },
+          });
+          if (listRes.ok) {
+            const listData = await listRes.json();
+            setCustomers(listData.customers || []);
+          }
+        }
+      }
+    } catch {
+      setImportResult({ imported: 0, skipped: 0, errors: ["Network error"], totalErrors: 1 });
+    } finally {
+      setImporting(false);
+      // Reset input so same file can be re-uploaded
+      if (importInputRef.current) importInputRef.current.value = "";
+    }
+  }
+
   const filtered = customers.filter(
     (c) =>
       c.name.toLowerCase().includes(search.toLowerCase()) ||
-      c.phone.includes(search)
+      (c.phone ?? "").includes(search)
   );
 
   if (loading) {
@@ -190,11 +325,64 @@ export default function CustomersPage() {
           <h1 className="text-2xl font-bold text-gray-900">Customers</h1>
           <p className="text-gray-500 mt-1">Manage all registered customers</p>
         </div>
-        <Button onClick={() => setCreateOpen(true)} className="gap-1.5">
-          <UserPlus className="h-4 w-4" />
-          New Customer
-        </Button>
+        <div className="flex gap-2">
+          <input
+            ref={importInputRef}
+            type="file"
+            accept=".csv"
+            className="hidden"
+            onChange={handleImportCSV}
+          />
+          <Button
+            variant="outline"
+            onClick={() => importInputRef.current?.click()}
+            disabled={importing}
+            className="gap-1.5"
+          >
+            {importing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Upload className="h-4 w-4" />
+            )}
+            {importing ? "Importing…" : "Import CSV"}
+          </Button>
+          <Button onClick={() => setCreateOpen(true)} className="gap-1.5">
+            <UserPlus className="h-4 w-4" />
+            New Customer
+          </Button>
+        </div>
       </div>
+
+      {importResult && (
+        <div
+          className={`rounded-lg px-4 py-3 text-sm flex items-start gap-3 ${
+            importResult.totalErrors > 0 && importResult.imported === 0
+              ? "bg-red-50 text-red-800"
+              : "bg-emerald-50 text-emerald-800"
+          }`}
+        >
+          <CheckCircle2 className="h-4 w-4 mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="font-medium">
+              Import complete — {importResult.imported} added, {importResult.skipped} skipped
+              {importResult.totalErrors > 0 && `, ${importResult.totalErrors} errors`}
+            </p>
+            {importResult.errors.length > 0 && (
+              <ul className="mt-1 text-xs opacity-80 space-y-0.5">
+                {importResult.errors.map((e, i) => (
+                  <li key={i}>{e}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <button
+            onClick={() => setImportResult(null)}
+            className="shrink-0 opacity-60 hover:opacity-100"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
 
       <Card>
         <CardHeader>
@@ -218,7 +406,7 @@ export default function CustomersPage() {
                 <TableHead>Name</TableHead>
                 <TableHead>Phone</TableHead>
                 <TableHead>Email</TableHead>
-                {!HIDE_BOOKINGS && <TableHead>Bookings</TableHead>}
+                {!HIDE_BOOKINGS_IN_LIST && <TableHead>Bookings</TableHead>}
                 <TableHead>Joined</TableHead>
                 <TableHead className="text-right">Details</TableHead>
               </TableRow>
@@ -227,11 +415,11 @@ export default function CustomersPage() {
               {filtered.map((customer) => (
                 <TableRow key={customer.id}>
                   <TableCell className="font-medium">{customer.name}</TableCell>
-                  <TableCell>+91 {customer.phone}</TableCell>
+                  <TableCell>{customer.phone ? `+91 ${customer.phone}` : "—"}</TableCell>
                   <TableCell className="text-gray-500">
                     {customer.email || "-"}
                   </TableCell>
-                  {!HIDE_BOOKINGS && (
+                  {!HIDE_BOOKINGS_IN_LIST && (
                     <TableCell>
                       <Badge variant="secondary">{customer.bookingsCount}</Badge>
                     </TableCell>
@@ -254,7 +442,10 @@ export default function CustomersPage() {
               ))}
               {filtered.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={HIDE_BOOKINGS ? 5 : 6} className="text-center text-gray-500 py-8">
+                  <TableCell
+                    colSpan={HIDE_BOOKINGS_IN_LIST ? 5 : 6}
+                    className="text-center text-gray-500 py-8"
+                  >
                     No customers found
                   </TableCell>
                 </TableRow>
@@ -270,6 +461,8 @@ export default function CustomersPage() {
           if (!o) {
             setOpenId(null);
             setDetail(null);
+            setIsEditing(false);
+            setEditForm(null);
           }
         }}
       >
@@ -277,9 +470,7 @@ export default function CustomersPage() {
           <SheetHeader>
             <SheetTitle>Customer Details</SheetTitle>
             <SheetDescription>
-              {HIDE_BOOKINGS
-                ? "Contact details and profile"
-                : "Full profile, bookings, and payment history"}
+              Contact details, profile, and bookings
             </SheetDescription>
           </SheetHeader>
 
@@ -294,10 +485,10 @@ export default function CustomersPage() {
               {/* Profile */}
               <section>
                 <div className="flex items-start gap-3">
-                  <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-semibold text-lg">
+                  <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-semibold text-lg shrink-0">
                     {detail.name.charAt(0).toUpperCase()}
                   </div>
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <h2 className="text-lg font-bold text-gray-900">
                       {detail.title ? `${detail.title} ` : ""}
                       {detail.name}
@@ -306,61 +497,243 @@ export default function CustomersPage() {
                       Customer since {formatDate(detail.createdAt)}
                     </p>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      setMessagingTarget({
-                        customerId: detail.id,
-                        customerName: detail.name,
-                      })
-                    }
-                    className="gap-1.5"
-                  >
-                    <MessageSquare className="h-4 w-4" />
-                    Message
-                  </Button>
+                  <div className="flex gap-2 shrink-0">
+                    {!isEditing && (
+                      <>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={startEdit}
+                          className="gap-1.5"
+                        >
+                          <Pencil className="h-3.5 w-3.5" />
+                          Edit
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setMessagingTarget({
+                              customerId: detail.id,
+                              customerName: detail.name,
+                            })
+                          }
+                          className="gap-1.5"
+                        >
+                          <MessageSquare className="h-4 w-4" />
+                          Message
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 mt-4 text-sm">
-                  <InfoRow icon={Phone} label="Phone" value={`+91 ${detail.phone}`} />
-                  {detail.altPhone && (
-                    <InfoRow icon={Phone} label="Alt Phone" value={`+91 ${detail.altPhone}`} />
-                  )}
-                  <InfoRow icon={Mail} label="Email" value={detail.email || "—"} />
-                  <InfoRow
-                    icon={MapPin}
-                    label="Location"
-                    value={[detail.city, detail.state].filter(Boolean).join(", ") || "—"}
-                  />
-                  {detail.address && (
-                    <div className="col-span-2">
-                      <InfoRow icon={MapPin} label="Address" value={detail.address} />
+                {/* Read-only view */}
+                {!isEditing && (
+                  <div className="grid grid-cols-2 gap-3 mt-4 text-sm">
+                    <InfoRow icon={Phone} label="Phone" value={detail.phone ? `+91 ${detail.phone}` : "—"} />
+                    {detail.altPhone && (
+                      <InfoRow icon={Phone} label="Alt Phone" value={`+91 ${detail.altPhone}`} />
+                    )}
+                    <InfoRow icon={Mail} label="Email" value={detail.email || "—"} />
+                    <InfoRow
+                      icon={MapPin}
+                      label="Location"
+                      value={[detail.city, detail.state].filter(Boolean).join(", ") || "—"}
+                    />
+                    {detail.address && (
+                      <div className="col-span-2">
+                        <InfoRow icon={MapPin} label="Address" value={detail.address} />
+                      </div>
+                    )}
+                    {detail.pincode && (
+                      <InfoRow icon={MapPin} label="Pincode" value={detail.pincode} />
+                    )}
+                    {detail.panNumber && (
+                      <InfoRow icon={User} label="PAN" value={detail.panNumber} />
+                    )}
+                    {detail.aadhaarNumber && (
+                      <InfoRow icon={User} label="Aadhaar" value={detail.aadhaarNumber} />
+                    )}
+                    {detail.profession && (
+                      <InfoRow icon={User} label="Profession" value={detail.profession} />
+                    )}
+                    {detail.companyName && (
+                      <InfoRow icon={Building2} label="Company" value={detail.companyName} />
+                    )}
+                  </div>
+                )}
+
+                {/* Edit form */}
+                {isEditing && editForm && (
+                  <div className="mt-4 space-y-3">
+                    {saveError && (
+                      <div className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded">
+                        {saveError}
+                      </div>
+                    )}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-xs text-gray-500">Title</label>
+                        <Input
+                          value={editForm.title}
+                          onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                          placeholder="Mr / Mrs / Dr"
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-gray-500">Name *</label>
+                        <Input
+                          value={editForm.name}
+                          onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                          placeholder="Full name"
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-gray-500">Phone (login, non-editable)</label>
+                        <Input
+                          value={detail.phone ? `+91 ${detail.phone}` : "No phone"}
+                          disabled
+                          className="h-8 text-sm bg-gray-50"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-gray-500">Alt Phone</label>
+                        <Input
+                          value={editForm.altPhone}
+                          onChange={(e) => setEditForm({ ...editForm, altPhone: e.target.value })}
+                          placeholder="10-digit number"
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                      <div className="col-span-2 space-y-1">
+                        <label className="text-xs text-gray-500">Email</label>
+                        <Input
+                          value={editForm.email}
+                          onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                          placeholder="email@example.com"
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                      <div className="col-span-2 space-y-1">
+                        <label className="text-xs text-gray-500">Address</label>
+                        <Input
+                          value={editForm.address}
+                          onChange={(e) => setEditForm({ ...editForm, address: e.target.value })}
+                          placeholder="Street address"
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-gray-500">City</label>
+                        <Input
+                          value={editForm.city}
+                          onChange={(e) => setEditForm({ ...editForm, city: e.target.value })}
+                          placeholder="City"
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-gray-500">State</label>
+                        <Input
+                          value={editForm.state}
+                          onChange={(e) => setEditForm({ ...editForm, state: e.target.value })}
+                          placeholder="State"
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-gray-500">Pincode</label>
+                        <Input
+                          value={editForm.pincode}
+                          onChange={(e) => setEditForm({ ...editForm, pincode: e.target.value })}
+                          placeholder="6-digit pincode"
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-gray-500">PAN</label>
+                        <Input
+                          value={editForm.panNumber}
+                          onChange={(e) =>
+                            setEditForm({ ...editForm, panNumber: e.target.value.toUpperCase() })
+                          }
+                          placeholder="ABCDE1234F"
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-gray-500">Aadhaar</label>
+                        <Input
+                          value={editForm.aadhaarNumber}
+                          onChange={(e) =>
+                            setEditForm({ ...editForm, aadhaarNumber: e.target.value })
+                          }
+                          placeholder="12-digit number"
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs text-gray-500">Profession</label>
+                        <Input
+                          value={editForm.profession}
+                          onChange={(e) =>
+                            setEditForm({ ...editForm, profession: e.target.value })
+                          }
+                          placeholder="e.g. Engineer"
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                      <div className="col-span-2 space-y-1">
+                        <label className="text-xs text-gray-500">Company</label>
+                        <Input
+                          value={editForm.companyName}
+                          onChange={(e) =>
+                            setEditForm({ ...editForm, companyName: e.target.value })
+                          }
+                          placeholder="Company name"
+                          className="h-8 text-sm"
+                        />
+                      </div>
                     </div>
-                  )}
-                  {detail.panNumber && (
-                    <InfoRow icon={User} label="PAN" value={detail.panNumber} />
-                  )}
-                  {detail.aadhaarNumber && (
-                    <InfoRow icon={User} label="Aadhaar" value={detail.aadhaarNumber} />
-                  )}
-                  {detail.profession && (
-                    <InfoRow icon={User} label="Profession" value={detail.profession} />
-                  )}
-                  {detail.companyName && (
-                    <InfoRow icon={Building2} label="Company" value={detail.companyName} />
-                  )}
-                </div>
+                    <div className="flex gap-2 pt-1">
+                      <Button
+                        size="sm"
+                        onClick={saveEdit}
+                        disabled={saving}
+                        className="gap-1.5"
+                      >
+                        {saving ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Save className="h-3.5 w-3.5" />
+                        )}
+                        Save
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={cancelEdit}
+                        disabled={saving}
+                        className="gap-1.5"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </section>
 
-              {!HIDE_BOOKINGS && <div className="h-px bg-gray-100" />}
+              <div className="h-px bg-gray-100" />
 
-              {/* Bookings */}
-              {!HIDE_BOOKINGS && (
+              {/* Bookings / Projects — always visible for admin */}
               <section>
                 <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
                   <Building2 className="h-4 w-4 text-gray-400" />
-                  Bookings ({detail.bookings.length})
+                  Projects &amp; Bookings ({detail.bookings.length})
                 </h3>
                 {detail.bookings.length === 0 && (
                   <p className="text-sm text-gray-500">No bookings yet.</p>
@@ -377,33 +750,38 @@ export default function CustomersPage() {
                             {b.unit.unitType}
                             {b.unit.areaSqFt ? ` · ${b.unit.areaSqFt} sq ft` : ""}
                             {b.unit.floor ? ` · Floor ${b.unit.floor}` : ""}
-                            {" · "}
-                            {b.unit.project.city}
+                            {b.unit.project.city ? ` · ${b.unit.project.city}` : ""}
                           </p>
-                          <p className="text-xs text-gray-400 mt-0.5">
-                            Ref {b.bookingRef} · Booked {formatDate(b.bookingDate)}
-                          </p>
+                          {b.totalAmount > 0 && (
+                            <p className="text-xs text-gray-400 mt-0.5">
+                              Ref {b.bookingRef} · Booked {formatDate(b.bookingDate)}
+                            </p>
+                          )}
                         </div>
-                        <Badge
-                          className={
-                            b.status === "ACTIVE"
-                              ? "bg-emerald-100 text-emerald-700"
-                              : "bg-gray-100 text-gray-600"
-                          }
-                        >
-                          {b.status}
-                        </Badge>
+                        {b.totalAmount > 0 && (
+                          <Badge
+                            className={
+                              b.status === "ACTIVE"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : "bg-gray-100 text-gray-600"
+                            }
+                          >
+                            {b.status}
+                          </Badge>
+                        )}
                       </div>
 
-                      <div className="grid grid-cols-3 gap-2 text-xs">
-                        <Stat label="Total" value={formatINR(b.totalAmount)} />
-                        <Stat label="Paid" value={formatINR(b.totalPaid)} tone="green" />
-                        <Stat
-                          label="Due"
-                          value={formatINR(b.totalDue)}
-                          tone={b.totalDue > 0 ? "red" : "gray"}
-                        />
-                      </div>
+                      {b.totalAmount > 0 && (
+                        <div className="grid grid-cols-3 gap-2 text-xs">
+                          <Stat label="Total" value={formatINR(b.totalAmount)} />
+                          <Stat label="Paid" value={formatINR(b.totalPaid)} tone="green" />
+                          <Stat
+                            label="Due"
+                            value={formatINR(b.totalDue)}
+                            tone={b.totalDue > 0 ? "red" : "gray"}
+                          />
+                        </div>
+                      )}
 
                       {b.overdueCount > 0 && (
                         <div className="flex items-center gap-2 text-xs text-red-700 bg-red-50 rounded px-2 py-1.5">
@@ -419,7 +797,7 @@ export default function CustomersPage() {
                         </div>
                       )}
 
-                      {b.schedule.length > 0 && (
+                      {b.totalAmount > 0 && b.schedule.length > 0 && (
                         <div className="pt-2">
                           <p className="text-xs font-medium text-gray-500 mb-1.5 flex items-center gap-1">
                             <CreditCard className="h-3 w-3" />
@@ -454,7 +832,9 @@ export default function CustomersPage() {
                                     </td>
                                     <td className="p-2">
                                       <span
-                                        className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium ${statusColor[s.status] || "bg-gray-100 text-gray-600"}`}
+                                        className={`inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                                          statusColor[s.status] || "bg-gray-100 text-gray-600"
+                                        }`}
                                       >
                                         {s.status}
                                       </span>
@@ -470,7 +850,6 @@ export default function CustomersPage() {
                   ))}
                 </div>
               </section>
-              )}
             </div>
           )}
         </SheetContent>

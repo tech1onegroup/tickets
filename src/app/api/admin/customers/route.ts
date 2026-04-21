@@ -11,7 +11,6 @@ export async function GET(request: Request) {
     const customers = await prisma.customer.findMany({
       include: { _count: { select: { bookings: true } } },
       orderBy: { createdAt: "desc" },
-      take: 200,
     });
 
     return NextResponse.json({

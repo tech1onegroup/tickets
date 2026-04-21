@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback, useMemo, Suspense } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent } from "@/components/ui/card";
@@ -255,6 +255,7 @@ function AdminTicketsContent() {
   });
   const [admins, setAdmins] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
+  const initialLoadDone = useRef(false);
   const [selectedTicket, setSelectedTicket] = useState<TicketDetail | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -308,7 +309,11 @@ function AdminTicketsContent() {
   const fetchTickets = useCallback(
     async (opts: { silent?: boolean } = {}) => {
       if (!accessToken) return;
-      if (!opts.silent) setLoading(true);
+      // Only show the full-page spinner on the very first load.
+      // All filter-change / SSE-triggered refetches run silently so the
+      // layout never collapses (which was causing the sidebar to "blink").
+      const showSpinner = !opts.silent && !initialLoadDone.current;
+      if (showSpinner) setLoading(true);
       try {
         const params = new URLSearchParams();
         if (filters.q) params.set("q", filters.q);
@@ -324,11 +329,12 @@ function AdminTicketsContent() {
           const data = await res.json();
           setTickets(data.tickets);
           setCounts(data.counts);
+          initialLoadDone.current = true;
         }
       } catch (err) {
-        if (!opts.silent) console.error("Failed to fetch tickets:", err);
+        if (showSpinner) console.error("Failed to fetch tickets:", err);
       } finally {
-        if (!opts.silent) setLoading(false);
+        if (showSpinner) setLoading(false);
       }
     },
     [accessToken, filters]

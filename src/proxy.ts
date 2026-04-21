@@ -61,7 +61,7 @@ export async function proxy(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-user-id", payload.userId);
   requestHeaders.set("x-user-role", payload.role);
-  requestHeaders.set("x-user-phone", payload.phone);
+  requestHeaders.set("x-user-phone", payload.phone ?? "");
 
   return NextResponse.next({ request: { headers: requestHeaders } });
 }

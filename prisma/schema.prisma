@@ -11,7 +11,7 @@ datasource db {
 
 model User {
   id          String    @id @default(cuid())
-  phone       String    @unique
+  phone       String?   @unique
   email       String?
   role        String    @default("CUSTOMER") // CUSTOMER, ADMIN, SUPER_ADMIN
   isActive    Boolean   @default(true)
@@ -103,7 +103,7 @@ model Customer {
   title         String?
   name          String
   email         String?
-  phone         String
+  phone         String?
   altPhone      String?
   address       String?
   city          String?
