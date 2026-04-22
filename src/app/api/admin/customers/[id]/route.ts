@@ -127,6 +127,18 @@ export async function GET(
         },
         orderBy: { bookingDate: "desc" },
       },
+      tickets: {
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          ticketRef: true,
+          subject: true,
+          category: true,
+          status: true,
+          priority: true,
+          createdAt: true,
+        },
+      },
     },
   });
 
@@ -198,5 +210,14 @@ export async function GET(
     createdAt: customer.createdAt.toISOString(),
     user: customer.user,
     bookings,
+    tickets: customer.tickets.map((t) => ({
+      id: t.id,
+      ticketRef: t.ticketRef,
+      subject: t.subject,
+      category: t.category,
+      status: t.status,
+      priority: t.priority,
+      createdAt: t.createdAt.toISOString(),
+    })),
   });
 }

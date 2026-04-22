@@ -23,7 +23,6 @@ export async function GET(request: Request) {
     const tickets = await prisma.ticket.findMany({
       where: { customerId: customer.id },
       orderBy: { createdAt: "desc" },
-      take: 50,
     });
 
     return NextResponse.json({

@@ -100,6 +100,15 @@ interface CustomerDetail {
       escalationStage: number;
     }>;
   }>;
+  tickets: Array<{
+    id: string;
+    ticketRef: string;
+    subject: string;
+    category: string;
+    status: string;
+    priority: string;
+    createdAt: string;
+  }>;
 }
 
 interface EditForm {
@@ -849,6 +858,64 @@ export default function CustomersPage() {
                     </div>
                   ))}
                 </div>
+              </section>
+
+              <div className="h-px bg-gray-100" />
+
+              {/* Tickets raised by this customer */}
+              <section>
+                <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4 text-gray-400" />
+                  Tickets ({detail.tickets.length})
+                </h3>
+                {detail.tickets.length === 0 ? (
+                  <p className="text-sm text-gray-500">No tickets raised yet.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {detail.tickets.map((t) => (
+                      <div
+                        key={t.id}
+                        className="border border-gray-200 rounded-lg p-3 flex items-start justify-between gap-3"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-gray-900 text-sm truncate">
+                            {t.subject}
+                          </p>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {t.ticketRef} · {t.category.replace(/_/g, " ")} ·{" "}
+                            {formatDate(t.createdAt)}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <Badge
+                            className={
+                              t.status === "OPEN"
+                                ? "bg-red-100 text-red-700"
+                                : t.status === "IN_PROGRESS"
+                                ? "bg-blue-100 text-blue-700"
+                                : t.status === "RESOLVED"
+                                ? "bg-emerald-100 text-emerald-700"
+                                : "bg-gray-100 text-gray-600"
+                            }
+                          >
+                            {t.status.replace(/_/g, " ")}
+                          </Badge>
+                          {(t.priority === "HIGH" || t.priority === "URGENT") && (
+                            <Badge
+                              className={
+                                t.priority === "URGENT"
+                                  ? "bg-red-100 text-red-700"
+                                  : "bg-amber-100 text-amber-700"
+                              }
+                            >
+                              {t.priority}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </section>
             </div>
           )}
