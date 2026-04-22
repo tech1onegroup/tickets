@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -873,9 +874,10 @@ export default function CustomersPage() {
                 ) : (
                   <div className="space-y-2">
                     {detail.tickets.map((t) => (
-                      <div
+                      <Link
                         key={t.id}
-                        className="border border-gray-200 rounded-lg p-3 flex items-start justify-between gap-3"
+                        href={`/admin/tickets?id=${t.id}`}
+                        className="border border-gray-200 rounded-lg p-3 flex items-start justify-between gap-3 hover:border-gray-300 hover:bg-gray-50 transition-colors"
                       >
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-gray-900 text-sm truncate">
@@ -912,7 +914,7 @@ export default function CustomersPage() {
                             </Badge>
                           )}
                         </div>
-                      </div>
+                      </Link>
                     ))}
                   </div>
                 )}

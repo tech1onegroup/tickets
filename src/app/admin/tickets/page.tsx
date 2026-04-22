@@ -377,6 +377,15 @@ function AdminTicketsContent() {
     [accessToken]
   );
 
+  // Auto-open a ticket when ?id=<ticketId> is in the URL (e.g. deep link from
+  // the admin customer detail sheet).
+  useEffect(() => {
+    const id = searchParams.get("id");
+    if (id && accessToken) openTicket(id);
+    // Only re-run when id or auth changes — not on every searchParams tick
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams.get("id"), accessToken]);
+
   // Silently refresh the selected ticket's conversation (preserves composer state)
   const refreshSelectedTicket = useCallback(
     async (ticketId?: string) => {
