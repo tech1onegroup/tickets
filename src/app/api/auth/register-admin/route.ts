@@ -35,8 +35,30 @@ export async function POST(request: Request) {
     const existing = await prisma.user.findUnique({ where: { phone } });
     if (existing) {
       if (existing.role === "ADMIN" || existing.role === "SUPER_ADMIN") {
+        // Admin already exists — update their email if a new one is provided.
+        // This allows admins to link their Google account after initial registration.
+        if (email) {
+          // Make sure no other account already owns this email
+          const emailConflict = await prisma.user.findFirst({
+            where: { email, NOT: { phone } },
+          });
+          if (emailConflict) {
+            return NextResponse.json(
+              { error: "That email is already associated with another account." },
+              { status: 400 }
+            );
+          }
+          await prisma.user.update({
+            where: { phone },
+            data: { email },
+          });
+          return NextResponse.json({
+            success: true,
+            message: "Admin email updated. You can now login with Google.",
+          });
+        }
         return NextResponse.json(
-          { error: "Admin account already exists for this phone" },
+          { error: "Admin account already exists for this phone. Provide an email to update it." },
           { status: 400 }
         );
       }

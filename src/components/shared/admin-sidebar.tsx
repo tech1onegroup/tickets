@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import { isTicketsOnly } from "@/lib/features";
 import { useAuth } from "@/hooks/use-auth";
@@ -14,13 +15,16 @@ import {
   HardHat,
   FileText,
   LogOut,
-  Settings,
   BarChart3,
   MessageSquare,
   ClipboardCheck,
+  Mail,
+  CheckCircle2,
+  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 
 const navGroups = [
   {
@@ -53,7 +57,40 @@ const navGroups = [
 
 export function AdminSidebar() {
   const pathname = usePathname();
-  const { user, logout } = useAuth();
+  const { user, accessToken, logout } = useAuth();
+  const [showEmailForm, setShowEmailForm] = useState(false);
+  const [emailInput, setEmailInput] = useState("");
+  const [emailStatus, setEmailStatus] = useState<"idle" | "saving" | "ok" | "err">("idle");
+  const [emailMsg, setEmailMsg] = useState("");
+
+  async function saveEmail() {
+    if (!accessToken || !emailInput.trim()) return;
+    setEmailStatus("saving");
+    try {
+      const res = await fetch("/api/auth/me", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ email: emailInput.trim() }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setEmailStatus("ok");
+        setEmailMsg(data.message || "Email saved.");
+        setShowEmailForm(false);
+        // Reflect new email without full reload
+        setTimeout(() => setEmailStatus("idle"), 4000);
+      } else {
+        setEmailStatus("err");
+        setEmailMsg(data.error || "Failed to save email.");
+      }
+    } catch {
+      setEmailStatus("err");
+      setEmailMsg("Could not reach server.");
+    }
+  }
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href + "/");
@@ -128,9 +165,9 @@ export function AdminSidebar() {
       <div className="mx-4 h-px bg-white/10" />
 
       {/* Admin info */}
-      <div className="p-4">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-xs font-bold text-primary-foreground">
+      <div className="p-4 space-y-2">
+        <div className="flex items-center gap-3">
+          <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-xs font-bold text-primary-foreground shrink-0">
             {(user?.name || "A").charAt(0).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
@@ -140,6 +177,62 @@ export function AdminSidebar() {
             <p className="text-[11px] text-white/40">{user?.role}</p>
           </div>
         </div>
+
+        {/* Google account linking */}
+        {user?.email ? (
+          <div className="flex items-center gap-1.5 px-1 py-0.5">
+            <CheckCircle2 className="h-3 w-3 text-green-400 shrink-0" />
+            <p className="text-[11px] text-white/40 truncate">{user.email}</p>
+          </div>
+        ) : (
+          <div>
+            {!showEmailForm ? (
+              <button
+                onClick={() => setShowEmailForm(true)}
+                className="flex items-center gap-1.5 px-1 py-0.5 text-[11px] text-yellow-400/80 hover:text-yellow-300 transition-colors"
+              >
+                <AlertCircle className="h-3 w-3 shrink-0" />
+                Link Google account
+              </button>
+            ) : (
+              <div className="space-y-1.5">
+                <Input
+                  type="email"
+                  placeholder="your@gmail.com"
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && saveEmail()}
+                  className="h-7 text-xs bg-white/10 border-white/20 text-white placeholder:text-white/30 focus:border-primary"
+                />
+                <div className="flex gap-1">
+                  <Button
+                    size="sm"
+                    onClick={saveEmail}
+                    disabled={emailStatus === "saving"}
+                    className="h-6 text-[11px] flex-1 bg-primary hover:bg-primary/90"
+                  >
+                    <Mail className="h-3 w-3 mr-1" />
+                    {emailStatus === "saving" ? "Saving…" : "Save"}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => { setShowEmailForm(false); setEmailStatus("idle"); }}
+                    className="h-6 text-[11px] text-white/40 hover:text-white hover:bg-white/10"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+                {(emailStatus === "ok" || emailStatus === "err") && (
+                  <p className={`text-[10px] px-1 ${emailStatus === "ok" ? "text-green-400" : "text-red-400"}`}>
+                    {emailMsg}
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         <Button
           variant="ghost"
           size="sm"

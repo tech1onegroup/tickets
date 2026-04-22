@@ -97,6 +97,7 @@ export default function NotificationsPage() {
   } = useNotifications();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const accessTokenRef = useRef(accessToken);
   accessTokenRef.current = accessToken;
 
@@ -104,16 +105,20 @@ export default function NotificationsPage() {
     const token = accessTokenRef.current;
     if (!token) return;
     setLoading(true);
+    setFetchError(null);
     try {
       const res = await fetch("/api/notifications", {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
         const data = await res.json();
-        setNotifications(data.notifications);
+        setNotifications(data.notifications ?? []);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setFetchError(data.error || `Server error (${res.status})`);
       }
-    } catch (err) {
-      console.error("Failed to load notifications:", err);
+    } catch {
+      setFetchError("Could not reach the server. Check your connection.");
     } finally {
       setLoading(false);
     }
@@ -147,6 +152,20 @@ export default function NotificationsPage() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
+      </div>
+    );
+  }
+
+  if (fetchError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4">
+        <p className="text-sm text-red-600 font-medium">{fetchError}</p>
+        <button
+          onClick={fetchNotifications}
+          className="text-sm underline text-gray-600 hover:text-gray-900"
+        >
+          Retry
+        </button>
       </div>
     );
   }

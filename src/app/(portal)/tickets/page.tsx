@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -85,11 +85,14 @@ export default function TicketsPage() {
   const router = useRouter();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ category: "", subject: "", description: "", priority: "" });
   const [attachments, setAttachments] = useState<File[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
+  const tokenRef = useRef(accessToken);
+  tokenRef.current = accessToken;
 
   useEffect(() => {
     if (!accessToken) return;
@@ -97,17 +100,23 @@ export default function TicketsPage() {
   }, [accessToken]);
 
   async function fetchTickets() {
+    const token = tokenRef.current;
+    if (!token) return;
     setLoading(true);
+    setFetchError(null);
     try {
       const res = await fetch("/api/tickets", {
-        headers: { Authorization: `Bearer ${accessToken}` },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
         const data = await res.json();
-        setTickets(data.tickets);
+        setTickets(data.tickets ?? []);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setFetchError(data.error || `Server error (${res.status})`);
       }
-    } catch (err) {
-      console.error("Failed to load tickets:", err);
+    } catch {
+      setFetchError("Could not reach the server. Check your connection.");
     } finally {
       setLoading(false);
     }
@@ -163,6 +172,15 @@ export default function TicketsPage() {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
+      </div>
+    );
+  }
+
+  if (fetchError) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4">
+        <p className="text-sm text-red-600 font-medium">{fetchError}</p>
+        <Button variant="outline" onClick={fetchTickets}>Retry</Button>
       </div>
     );
   }

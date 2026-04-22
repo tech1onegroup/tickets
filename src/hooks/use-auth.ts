@@ -5,6 +5,7 @@ import { createContext, useContext } from "react";
 export interface AuthUser {
   id: string;
   phone: string;
+  email: string | null;
   role: "CUSTOMER" | "ADMIN" | "SUPER_ADMIN";
   name: string | null;
   customer?: {

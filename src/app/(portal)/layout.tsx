@@ -14,7 +14,7 @@ export default function PortalLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, isLoading } = useAuth();
+  const { user, accessToken, isLoading } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -37,7 +37,10 @@ export default function PortalLayout({
     setSidebarOpen(false);
   }, [children]);
 
-  if (isLoading) {
+  // Show spinner until auth is fully resolved AND accessToken is in sync.
+  // This prevents pages from mounting with accessToken=null and missing their
+  // initial data fetch (the effect fires once with null then never re-runs).
+  if (isLoading || (user && !accessToken)) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
