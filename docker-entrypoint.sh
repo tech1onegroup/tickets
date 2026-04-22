@@ -1,9 +1,11 @@
 #!/bin/sh
 set -e
 
-# Create/update schema from prisma file against Postgres (Supabase)
-echo "Pushing database schema to Supabase..."
-npx prisma db push --accept-data-loss 2>&1
+# Create/update schema from prisma file against Postgres (Supabase).
+# NEVER use --accept-data-loss — if a schema push would require dropping
+# columns/tables/data, we want it to fail loudly so a human can decide.
+echo "Syncing database schema (non-destructive only)..."
+npx prisma db push 2>&1
 
 # Seed only if no admin user exists yet (first deploy)
 SEED_FLAG=/app/data/.seeded
