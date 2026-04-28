@@ -28,16 +28,12 @@ export async function POST(request: Request) {
     const { phone } = parsed.data;
     const fullPhone = `91${phone}`;
 
-    // Only allow OTP for phones that are already registered — customers
-    // (User with a linked Customer profile) or admins (ADMIN / SUPER_ADMIN).
-    // Generic return message so we don't leak whether a number is in the system.
+    // OTP is only for admins — customers log in directly via /api/auth/phone-login.
     const user = await prisma.user.findUnique({
       where: { phone },
-      include: { customer: true },
     });
     const isAdmin = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
-    const isCustomer = Boolean(user?.customer);
-    if (!user || !user.isActive || (!isCustomer && !isAdmin)) {
+    if (!user || !user.isActive || !isAdmin) {
       return NextResponse.json(
         {
           error:

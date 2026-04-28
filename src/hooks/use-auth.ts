@@ -26,6 +26,7 @@ interface AuthContextType {
   user: AuthUser | null;
   accessToken: string | null;
   login: (phone: string) => Promise<{ success: boolean; otp?: string }>;
+  loginWithPhone: (phone: string) => Promise<boolean>;
   verifyOtp: (phone: string, otp: string) => Promise<boolean>;
   logout: () => void;
   isLoading: boolean;
@@ -35,6 +36,7 @@ export const AuthContext = createContext<AuthContextType>({
   user: null,
   accessToken: null,
   login: async () => ({ success: false }),
+  loginWithPhone: async () => false,
   verifyOtp: async () => false,
   logout: () => {},
   isLoading: true,

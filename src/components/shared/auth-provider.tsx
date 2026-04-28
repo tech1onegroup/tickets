@@ -71,6 +71,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { success: true };
   };
 
+  const loginWithPhone = async (phone: string) => {
+    const res = await fetch("/api/auth/phone-login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phone }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    localStorage.setItem("access_token", data.accessToken);
+    setAccessToken(data.accessToken);
+    await fetchUser(data.accessToken);
+    return true;
+  };
+
   const verifyOtp = async (phone: string, otp: string) => {
     const res = await fetch("/api/auth/verify-otp", {
       method: "POST",
@@ -97,7 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, accessToken, login, verifyOtp, logout, isLoading }}
+      value={{ user, accessToken, login, loginWithPhone, verifyOtp, logout, isLoading }}
     >
       {children}
     </AuthContext.Provider>
