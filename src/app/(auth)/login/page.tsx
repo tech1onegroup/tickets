@@ -104,9 +104,11 @@ function LoginContent() {
     setCustomerError("");
     setCustomerLoading(true);
     try {
-      await loginWithPhone(customerPhone);
+      await login(customerPhone);
+      setStep("otp");
+      setTimeout(() => inputRefs.current[0]?.focus(), 150);
     } catch (err) {
-      setCustomerError(err instanceof Error ? err.message : "Login failed");
+      setCustomerError(err instanceof Error ? err.message : "Failed to send OTP");
     } finally {
       setCustomerLoading(false);
     }
@@ -153,7 +155,7 @@ function LoginContent() {
     setOtpError("");
     setOtpLoading(true);
     try {
-      await verifyOtp(adminPhone, otpString);
+      await verifyOtp(isAdminMode ? adminPhone : customerPhone, otpString);
     } catch (err) {
       setOtpError(err instanceof Error ? err.message : "Verification failed");
       setOtp(["", "", "", "", "", ""]);
@@ -252,7 +254,7 @@ function LoginContent() {
             <div className="space-y-8 animate-in fade-in duration-300">
               <div>
                 <h2 className="text-2xl font-bold text-foreground">Welcome back</h2>
-                <p className="text-muted-foreground mt-2">Enter your registered phone number to continue</p>
+                <p className="text-muted-foreground mt-2">Enter your registered phone number to receive a one-time code via WhatsApp</p>
               </div>
 
               <form onSubmit={handleCustomerLogin} className="space-y-5">
@@ -291,7 +293,7 @@ function LoginContent() {
                   className="w-full h-12 text-base font-semibold bg-primary hover:bg-primary/90 text-primary-foreground"
                   disabled={customerLoading || customerPhone.length !== 10}
                 >
-                  {customerLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <>Login <ArrowRight className="h-4 w-4 ml-2" /></>}
+                  {customerLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <>Get OTP <ArrowRight className="h-4 w-4 ml-2" /></>}
                 </Button>
               </form>
 
@@ -422,7 +424,7 @@ function LoginContent() {
                 <h2 className="text-2xl font-bold text-foreground">Verify OTP</h2>
                 <p className="text-muted-foreground mt-2">
                   We sent a 6-digit code to{" "}
-                  <span className="font-semibold text-foreground">+91 {adminPhone}</span>
+                  <span className="font-semibold text-foreground">+91 {isAdminMode ? adminPhone : customerPhone}</span>
                 </p>
               </div>
 

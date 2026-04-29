@@ -28,12 +28,13 @@ export async function POST(request: Request) {
     const { phone } = parsed.data;
     const fullPhone = `91${phone}`;
 
-    // OTP is only for admins — customers log in directly via /api/auth/phone-login.
     const user = await prisma.user.findUnique({
       where: { phone },
+      include: { customer: true },
     });
     const isAdmin = user?.role === "ADMIN" || user?.role === "SUPER_ADMIN";
-    if (!user || !user.isActive || !isAdmin) {
+    const isCustomer = Boolean(user?.customer);
+    if (!user || !user.isActive || (!isAdmin && !isCustomer)) {
       return NextResponse.json(
         {
           error:
